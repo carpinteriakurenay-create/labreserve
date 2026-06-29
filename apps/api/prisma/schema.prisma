@@ -1,0 +1,383 @@
+// Prisma Schema — LabReserve
+// ==================================================
+// 注意：本项目使用 MyBatis-Plus 而非 Prisma ORM。
+// 此文件仅供数据模型文档与数据库表设计的参考，不参与运行时。
+// Prisma 格式用于声明式地展示表结构、字段约束、关系和索引。
+// 实际的 DDL 迁移由 MyBatis-Plus 配合 SQL 脚本管理。
+// ==================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 枚举 / 映射表 ====================
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum LabStatus {
+  AVAILABLE
+  MAINTENANCE
+  CLOSED
+}
+
+enum BookingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum EquipmentStatus {
+  AVAILABLE
+  BORROWED
+  MAINTENANCE
+}
+
+enum BorrowStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  BORROWING
+  RETURNED
+}
+
+enum NoticePriority {
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
+enum NoticeType {
+  GENERAL
+  LAB
+  EQUIPMENT
+}
+
+// ==================== 核心实体 ====================
+
+model User {
+  id           BigInt    @id @default(autoincrement())
+  username     String    @unique @db.VarChar(50)               // 学号 / 工号
+  realName     String    @map("real_name") @db.VarChar(50)    // 真实姓名
+  password     String    @db.VarChar(255)                      // BCrypt hash
+  email        String?   @db.VarChar(100)
+  phone        String?   @db.VarChar(20)
+  role         Role      @default(STUDENT)
+  avatar       String?   @db.VarChar(255)                      // 头像 URL
+  enabled      Boolean   @default(true)                        // 是否启用（禁用后不可登录）
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")                    // 软删除
+
+  // 关系
+  bookings            Booking[]          @relation("UserBookings")       // 我创建的预约
+  approvedBookings    Booking[]          @relation("ApproverBookings")   // 我审批的预约
+  courseTeacher       Course[]           @relation("CourseTeacher")      // 我任课的课程
+  borrows             Borrow[]           @relation("UserBorrows")        // 我发起的借用
+  approvedBorrows     Borrow[]           @relation("ApproverBorrows")    // 我审批的借用
+  notices             Notice[]           @relation("NoticePublisher")    // 我发布的通知
+  reviews             Review[]                                        // 我写的评价
+  managedLabs         Lab[]              @relation("LabManager")         // 我管理的实验室
+  createdStudents     Student[]          @relation("CreatedStudents")    // 我录入的学生信息
+  sentMessages        Message[]          @relation("MessageSender")      // 我发送的消息
+  receivedMessages    Message[]          @relation("MessageReceiver")    // 我收到的消息
+
+  @@index([username])
+  @@index([role])
+  @@index([enabled])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Lab {
+  id           BigInt    @id @default(autoincrement())
+  name         String    @db.VarChar(100)                      // 实验室名称
+  location     String?   @db.VarChar(200)                      // 位置（如 "北校区实训楼 101"）
+  capacity     Int       @default(0)                           // 容纳人数
+  description  String?   @db.Text                               // 描述
+  imageUrl     String?   @map("image_url") @db.VarChar(255)   // 实验室照片
+  equipmentNum Int       @default(0) @map("equipment_num")    // 设备数量 — 冗余计数器，避免 JOIN 统计
+  status       LabStatus @default(AVAILABLE)
+  managerId    BigInt?   @map("manager_id")                    // 实验室管理员
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  // 关系
+  manager       User        @relation("LabManager", fields: [managerId], references: [id])
+  openHours     LabHours[]
+  equipments    Equipment[]
+  bookings      Booking[]
+  courses       Course[]
+  notices       Notice[]
+  labCategories LabCategory[]
+
+  @@index([status])
+  @@index([name])
+  @@index([deletedAt])
+  @@map("labs")
+}
+
+model LabHours {
+  id        BigInt   @id @default(autoincrement())
+  labId     BigInt   @map("lab_id")
+  dayOfWeek Int      @map("day_of_week") @db.TinyInt          // 1=Mon ... 7=Sun
+  openTime  String   @map("open_time") @db.VarChar(10)       // "08:00"
+  closeTime String   @map("close_time") @db.VarChar(10)       // "21:00"
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  lab Lab @relation(fields: [labId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, dayOfWeek, openTime])                       // 同一实验室同一天相同时段不重复
+  @@index([labId])
+  @@map("lab_hours")
+}
+
+model Equipment {
+  id            BigInt          @id @default(autoincrement())
+  name          String          @db.VarChar(100)
+  model         String?         @db.VarChar(100)               // 型号
+  serialNumber  String?         @unique @map("serial_number") @db.VarChar(100) // 序列号
+  labId         BigInt?         @map("lab_id")                 // 所属实验室
+  status        EquipmentStatus @default(AVAILABLE)
+  description   String?         @db.Text
+  purchaseDate  DateTime?       @map("purchase_date")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  deletedAt     DateTime?       @map("deleted_at")
+
+  // 关系
+  lab     Lab      @relation(fields: [labId], references: [id])
+  borrows Borrow[]
+
+  @@index([labId])
+  @@index([status])
+  @@index([name])
+  @@index([deletedAt])
+  @@map("equipment")
+}
+
+model Booking {
+  id              BigInt        @id @default(autoincrement())
+  labId           BigInt        @map("lab_id")
+  userId          BigInt        @map("user_id")                // 预约申请人
+  date            DateTime      @db.Date                       // 预约日期
+  startTime       String        @map("start_time") @db.VarChar(10) // "14:00"
+  endTime         String        @map("end_time") @db.VarChar(10)   // "16:00"
+  purpose         String?       @db.Text                       // 用途说明
+  personCount     Int           @default(1) @map("person_count")  // 使用人数
+  status          BookingStatus @default(PENDING)
+  rejectReason    String?       @map("reject_reason") @db.Text // 驳回原因
+  approverId      BigInt?       @map("approver_id")            // 审批人
+  approvedAt      DateTime?     @map("approved_at")            // 审批时间
+  completedAt     DateTime?     @map("completed_at")           // 完成时间
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  // 关系
+  lab      Lab  @relation(fields: [labId], references: [id])
+  user     User @relation("UserBookings", fields: [userId], references: [id])
+  approver User? @relation("ApproverBookings", fields: [approverId], references: [id])
+  review   Review?
+
+  @@index([labId, date])                                        // 时间冲突检测热点查询
+  @@index([userId])                                             // "我的预约"列表
+  @@index([status])                                             // 按状态筛选（待审批列表）
+  @@index([approverId])                                         // 按审批人查询
+  @@index([deletedAt])
+  @@map("bookings")
+}
+
+model Review {
+  id        BigInt   @id @default(autoincrement())
+  bookingId BigInt   @unique @map("booking_id")                // 一次预约最多一条评价
+  userId    BigInt   @map("user_id")                           // 评价人
+  rating    Int      @db.TinyInt                                // 1-5 星
+  content   String?  @db.Text                                   // 文字评价
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // 关系
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([bookingId])
+  @@index([userId])
+  @@index([deletedAt])
+  @@map("reviews")
+}
+
+model Borrow {
+  id              BigInt       @id @default(autoincrement())
+  equipmentId     BigInt       @map("equipment_id")
+  userId          BigInt       @map("user_id")
+  borrowDate      DateTime     @map("borrow_date") @db.Date    // 借用日期
+  expectedReturn  DateTime     @map("expected_return") @db.Date // 预计归还日期
+  actualReturn    DateTime?    @map("actual_return") @db.Date   // 实际归还日期
+  purpose         String?      @db.Text                         // 用途
+  status          BorrowStatus @default(PENDING)
+  rejectReason    String?      @map("reject_reason") @db.Text
+  approverId      BigInt?      @map("approver_id")
+  approvedAt      DateTime?    @map("approved_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+
+  // 关系
+  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  user      User      @relation("UserBorrows", fields: [userId], references: [id])
+  approver  User?     @relation("ApproverBorrows", fields: [approverId], references: [id])
+
+  @@index([equipmentId])
+  @@index([userId])
+  @@index([status])
+  @@index([approverId])
+  @@index([deletedAt])
+  @@map("borrows")
+}
+
+model Course {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @db.VarChar(100)                           // 课程名称
+  labId     BigInt   @map("lab_id")                             // 上课实验室
+  teacherId BigInt   @map("teacher_id")                         // 任课教师
+  semester  String   @db.VarChar(20)                            // 学期，如 "2025-2026-1"
+  dayOfWeek Int      @map("day_of_week") @db.TinyInt            // 1-7
+  startTime String   @map("start_time") @db.VarChar(10)
+  endTime   String   @map("end_time") @db.VarChar(10)
+  startDate DateTime @map("start_date") @db.Date                // 课程开始日期
+  endDate   DateTime @map("end_date") @db.Date                  // 课程结束日期
+  className String?  @map("class_name") @db.VarChar(100)       // 班级名称
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // 关系
+  lab     Lab  @relation(fields: [labId], references: [id])
+  teacher User @relation("CourseTeacher", fields: [teacherId], references: [id])
+
+  @@index([labId, dayOfWeek])                                   // 时间冲突检测
+  @@index([teacherId])
+  @@index([semester])
+  @@index([deletedAt])
+  @@map("courses")
+}
+
+model Notice {
+  id        BigInt         @id @default(autoincrement())
+  title     String         @db.VarChar(200)
+  content   String         @db.Text
+  type      NoticeType     @default(GENERAL)
+  priority  NoticePriority @default(NORMAL)
+  publisherId BigInt       @map("publisher_id")
+  labId     BigInt?        @map("lab_id")                       // 关联实验室（可选，实验室类通知用）
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+  deletedAt DateTime?      @map("deleted_at")
+
+  // 关系
+  publisher User @relation("NoticePublisher", fields: [publisherId], references: [id])
+  lab       Lab? @relation(fields: [labId], references: [id])
+
+  @@index([type])
+  @@index([priority])
+  @@index([createdAt])                                          // 按时间排序
+  @@index([deletedAt])
+  @@map("notices")
+}
+
+// ==================== 辅助实体 ====================
+
+model LabCategory {
+  id        BigInt   @id @default(autoincrement())
+  labId     BigInt   @map("lab_id")
+  name      String   @db.VarChar(50)                            // 分类名（如 "计算机组成原理实验室"）
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  lab Lab @relation(fields: [labId], references: [id], onDelete: Cascade)
+
+  @@unique([name])
+  @@index([labId])
+  @@map("lab_categories")
+}
+
+model Student {
+  id        BigInt   @id @default(autoincrement())
+  labId     BigInt?  @map("lab_id")                             // 所属实验室分室
+  name      String   @db.VarChar(50)
+  gender    String?  @db.VarChar(4)                             // "男" / "女"
+  age       Int?     @db.TinyInt
+  address   String?  @db.VarChar(200)
+  createdBy BigInt?  @map("created_by")                         // 录入人
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  lab     Lab  @relation(fields: [labId], references: [id])
+  creator User? @relation("CreatedStudents", fields: [createdBy], references: [id])
+
+  @@index([labId])
+  @@index([name])
+  @@index([deletedAt])
+  @@map("students")
+}
+
+model Message {
+  id         BigInt    @id @default(autoincrement())
+  senderId   BigInt    @map("sender_id")
+  receiverId BigInt    @map("receiver_id")
+  title      String    @db.VarChar(200)
+  content    String    @db.Text
+  isRead     Boolean   @default(false) @map("is_read")
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  sender   User @relation("MessageSender", fields: [senderId], references: [id])
+  receiver User @relation("MessageReceiver", fields: [receiverId], references: [id])
+
+  @@index([receiverId, isRead])                                 // 未读消息查询
+  @@index([senderId])
+  @@index([deletedAt])
+  @@map("messages")
+}
+
+// ==================== 维修记录（关联设备） ====================
+
+model RepairLog {
+  id          BigInt   @id @default(autoincrement())
+  equipmentId BigInt   @map("equipment_id")
+  faultDesc   String   @map("fault_desc") @db.Text             // 故障描述
+  reporterId  BigInt   @map("reporter_id")                      // 报修人
+  status      String   @default("UNREPAIRED") @db.VarChar(20)  // UNREPAIRED / REPAIRING / REPAIRED
+  repairedAt  DateTime? @map("repaired_at")
+  remark      String?  @db.Text                                 // 维修备注
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  reporter  User      @relation(fields: [reporterId], references: [id])
+
+  @@index([equipmentId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("repair_logs")
+}

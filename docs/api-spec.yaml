@@ -1,0 +1,2893 @@
+openapi: "3.0.3"
+info:
+  title: LabReserve API
+  description: 高校实验室预约管理系统 RESTful API
+  version: "1.0.0"
+  contact:
+    name: LabReserve Team
+
+servers:
+  - url: http://localhost:8080/api
+    description: 本地开发环境
+
+tags:
+  - name: Auth
+    description: 认证与授权
+  - name: Users
+    description: 用户管理
+  - name: Labs
+    description: 实验室信息管理
+  - name: LabHours
+    description: 实验室开放时间
+  - name: Bookings
+    description: 预约管理
+  - name: Equipment
+    description: 设备管理
+  - name: Borrows
+    description: 设备借用管理
+  - name: Courses
+    description: 课程管理
+  - name: Notices
+    description: 通知公告
+  - name: Reviews
+    description: 实验室评价
+  - name: UsageRecords
+    description: 使用记录
+  - name: Dashboard
+    description: 数据统计报表
+  - name: Students
+    description: 学生信息管理
+  - name: RepairLogs
+    description: 报修记录
+  - name: Health
+    description: 系统健康
+
+# ──────────────────────────────────────
+# 安全定义
+# ──────────────────────────────────────
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        使用登录接口获取的 JWT token。
+        Header: `Authorization: Bearer <token>`
+
+  # ── 可复用响应 ──
+  responses:
+    Success:
+      description: 操作成功
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiResponse"
+    Created:
+      description: 创建成功
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiResponse"
+    NoContent:
+      description: 删除成功（无响应体）
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Unauthorized:
+      description: 未认证或 token 过期
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Forbidden:
+      description: 无权限
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Conflict:
+      description: 资源冲突（如时间冲突、重复预约）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+  # ── 可复用参数 ──
+  parameters:
+    CursorParam:
+      name: cursor
+      in: query
+      schema:
+        type: string
+      description: 分页游标（上一页最后一条记录的 ID，首次不传）
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+      description: 每页条数
+
+  # ──────────────────────────────────────
+  # 数据模型（Schema）
+  # ──────────────────────────────────────
+  schemas:
+    # ── 通用 ──
+    ApiResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          description: 业务状态码，"SUCCESS" 表示成功
+          example: "SUCCESS"
+        message:
+          type: string
+          description: 提示信息
+          example: "操作成功"
+        data:
+          description: 响应数据
+
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: 错误码
+          example: "NOT_FOUND"
+        message:
+          type: string
+          description: 错误描述
+          example: "资源不存在"
+        details:
+          type: object
+          description: 错误详情（如字段校验错误）
+          additionalProperties: true
+
+    CursorPageResult:
+      type: object
+      properties:
+        records:
+          type: array
+          items: {}
+        count:
+          type: integer
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          nullable: true
+        total:
+          type: integer
+
+    # ── 认证 ──
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          maxLength: 50
+          example: "2021001"
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          format: password
+          example: "abc123"
+
+    RegisterRequest:
+      type: object
+      required: [username, password, realName]
+      properties:
+        username:
+          type: string
+          maxLength: 50
+          example: "2021001"
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          format: password
+        realName:
+          type: string
+          maxLength: 50
+          example: "张三"
+        email:
+          type: string
+          format: email
+          maxLength: 100
+        phone:
+          type: string
+          maxLength: 20
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT access token
+        expiresIn:
+          type: integer
+          description: 过期时间（秒），86400 = 24h
+        user:
+          $ref: "#/components/schemas/UserInfo"
+
+    UserInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        realName:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+        avatar:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+
+    UserRole:
+      type: string
+      enum: [STUDENT, TEACHER, ADMIN]
+
+    # ── 用户 ──
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        realName:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        role:
+          $ref: "#/components/schemas/UserRole"
+        avatar:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    UserCreateRequest:
+      type: object
+      required: [username, password, realName, role]
+      properties:
+        username:
+          type: string
+          maxLength: 50
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+        realName:
+          type: string
+          maxLength: 50
+        role:
+          $ref: "#/components/schemas/UserRole"
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        realName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          $ref: "#/components/schemas/UserRole"
+        enabled:
+          type: boolean
+
+    ChangePasswordRequest:
+      type: object
+      required: [oldPassword, newPassword]
+      properties:
+        oldPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 6
+          maxLength: 100
+
+    # ── 实验室 ──
+    LabStatus:
+      type: string
+      enum: [AVAILABLE, MAINTENANCE, CLOSED]
+
+    Lab:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        location:
+          type: string
+        capacity:
+          type: integer
+        description:
+          type: string
+          nullable: true
+        imageUrl:
+          type: string
+          nullable: true
+        equipmentNum:
+          type: integer
+        status:
+          $ref: "#/components/schemas/LabStatus"
+        managerId:
+          type: string
+          nullable: true
+        managerName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    LabCreateRequest:
+      type: object
+      required: [name, location, capacity]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        location:
+          type: string
+          maxLength: 200
+        capacity:
+          type: integer
+          minimum: 1
+        description:
+          type: string
+        imageUrl:
+          type: string
+        managerId:
+          type: string
+
+    LabUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        location:
+          type: string
+          maxLength: 200
+        capacity:
+          type: integer
+          minimum: 1
+        description:
+          type: string
+        imageUrl:
+          type: string
+        status:
+          $ref: "#/components/schemas/LabStatus"
+        managerId:
+          type: string
+
+    LabHours:
+      type: object
+      properties:
+        id:
+          type: string
+        labId:
+          type: string
+        dayOfWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+        openTime:
+          type: string
+          pattern: "^\\d{2}:\\d{2}$"
+        closeTime:
+          type: string
+          pattern: "^\\d{2}:\\d{2}$"
+
+    LabHoursBatchRequest:
+      type: object
+      required: [labId, hours]
+      properties:
+        labId:
+          type: string
+        hours:
+          type: array
+          items:
+            type: object
+            required: [dayOfWeek, openTime, closeTime]
+            properties:
+              dayOfWeek:
+                type: integer
+                minimum: 1
+                maximum: 7
+              openTime:
+                type: string
+              closeTime:
+                type: string
+
+    # ── 预约 ──
+    BookingStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, CANCELLED, COMPLETED]
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: string
+        labId:
+          type: string
+        labName:
+          type: string
+        userId:
+          type: string
+        userName:
+          type: string
+        userRealName:
+          type: string
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+        endTime:
+          type: string
+        purpose:
+          type: string
+        personCount:
+          type: integer
+        status:
+          $ref: "#/components/schemas/BookingStatus"
+        rejectReason:
+          type: string
+          nullable: true
+        approverId:
+          type: string
+          nullable: true
+        approverName:
+          type: string
+        approvedAt:
+          type: string
+          nullable: true
+          format: date-time
+        completedAt:
+          type: string
+          nullable: true
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    BookingCreateRequest:
+      type: object
+      required: [labId, date, startTime, endTime, purpose]
+      properties:
+        labId:
+          type: string
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+          pattern: "^\\d{2}:\\d{2}$"
+        endTime:
+          type: string
+          pattern: "^\\d{2}:\\d{2}$"
+        purpose:
+          type: string
+          maxLength: 500
+        personCount:
+          type: integer
+          minimum: 1
+          default: 1
+
+    BookingUpdateRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+        endTime:
+          type: string
+        purpose:
+          type: string
+        personCount:
+          type: integer
+
+    ApprovalRequest:
+      type: object
+      required: [approved]
+      properties:
+        approved:
+          type: boolean
+        rejectReason:
+          type: string
+          description: 驳回时必填
+
+    TimeSlot:
+      type: object
+      properties:
+        startTime:
+          type: string
+        endTime:
+          type: string
+        available:
+          type: boolean
+
+    # ── 设备 ──
+    EquipmentStatus:
+      type: string
+      enum: [AVAILABLE, BORROWED, MAINTENANCE]
+
+    Equipment:
+      type: object
+      properties:
+        id:
+          type: string
+        labId:
+          type: string
+        labName:
+          type: string
+        name:
+          type: string
+        model:
+          type: string
+          nullable: true
+        serialNumber:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/EquipmentStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EquipmentCreateRequest:
+      type: object
+      required: [labId, name, serialNumber]
+      properties:
+        labId:
+          type: string
+        name:
+          type: string
+          maxLength: 100
+        model:
+          type: string
+          maxLength: 100
+        serialNumber:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+
+    EquipmentUpdateRequest:
+      type: object
+      properties:
+        labId:
+          type: string
+        name:
+          type: string
+        model:
+          type: string
+        serialNumber:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/EquipmentStatus"
+
+    # ── 借用 ──
+    BorrowStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, BORROWING, RETURNED]
+
+    Borrow:
+      type: object
+      properties:
+        id:
+          type: string
+        equipmentId:
+          type: string
+        equipmentName:
+          type: string
+        userId:
+          type: string
+        userName:
+          type: string
+        userRealName:
+          type: string
+        borrowDate:
+          type: string
+          format: date
+        expectedReturn:
+          type: string
+          format: date
+        actualReturn:
+          type: string
+          nullable: true
+          format: date
+        purpose:
+          type: string
+        status:
+          $ref: "#/components/schemas/BorrowStatus"
+        rejectReason:
+          type: string
+          nullable: true
+        approverId:
+          type: string
+          nullable: true
+        approverName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    BorrowCreateRequest:
+      type: object
+      required: [equipmentId, borrowDate, expectedReturn, purpose]
+      properties:
+        equipmentId:
+          type: string
+        borrowDate:
+          type: string
+          format: date
+        expectedReturn:
+          type: string
+          format: date
+        purpose:
+          type: string
+          maxLength: 500
+
+    # ── 课程 ──
+    Course:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        labId:
+          type: string
+        labName:
+          type: string
+        teacherId:
+          type: string
+        teacherName:
+          type: string
+        semester:
+          type: string
+        dayOfWeek:
+          type: integer
+        startTime:
+          type: string
+        endTime:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        className:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CourseCreateRequest:
+      type: object
+      required:
+        [
+          name,
+          labId,
+          teacherId,
+          semester,
+          dayOfWeek,
+          startTime,
+          endTime,
+          startDate,
+          endDate,
+          className,
+        ]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        labId:
+          type: string
+        teacherId:
+          type: string
+        semester:
+          type: string
+          pattern: "^\\d{4}-\\d{4}-[12]$"
+          example: "2025-2026-1"
+        dayOfWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+        startTime:
+          type: string
+        endTime:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        className:
+          type: string
+          maxLength: 100
+
+    CourseUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        labId:
+          type: string
+        teacherId:
+          type: string
+        dayOfWeek:
+          type: integer
+        startTime:
+          type: string
+        endTime:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        className:
+          type: string
+
+    # ── 通知 ──
+    NoticeType:
+      type: string
+      enum: [GENERAL, LAB, EQUIPMENT]
+
+    NoticePriority:
+      type: string
+      enum: [LOW, NORMAL, HIGH, URGENT]
+
+    Notice:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        type:
+          $ref: "#/components/schemas/NoticeType"
+        priority:
+          $ref: "#/components/schemas/NoticePriority"
+        publisherId:
+          type: string
+        publisherName:
+          type: string
+        labId:
+          type: string
+          nullable: true
+        labName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    NoticeCreateRequest:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        content:
+          type: string
+        type:
+          $ref: "#/components/schemas/NoticeType"
+        priority:
+          $ref: "#/components/schemas/NoticePriority"
+        labId:
+          type: string
+
+    NoticeUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        type:
+          $ref: "#/components/schemas/NoticeType"
+        priority:
+          $ref: "#/components/schemas/NoticePriority"
+
+    # ── 评价 ──
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+        bookingId:
+          type: string
+        userId:
+          type: string
+        userName:
+          type: string
+        userRealName:
+          type: string
+        labId:
+          type: string
+        labName:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ReviewCreateRequest:
+      type: object
+      required: [bookingId, rating]
+      properties:
+        bookingId:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          maxLength: 500
+
+    # ── 使用记录 ──
+    UsageRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        bookingId:
+          type: string
+        labId:
+          type: string
+        labName:
+          type: string
+        userId:
+          type: string
+        userRealName:
+          type: string
+        date:
+          type: string
+          format: date
+        startTime:
+          type: string
+        endTime:
+          type: string
+        purpose:
+          type: string
+        personCount:
+          type: integer
+        completedAt:
+          type: string
+          format: date-time
+
+    # ── 仪表盘 ──
+    DashboardKpi:
+      type: object
+      properties:
+        todayBookings:
+          type: integer
+        todayBorrows:
+          type: integer
+        labUsageRate:
+          type: number
+          format: double
+        pendingApprovals:
+          type: integer
+
+    LabUsageStat:
+      type: object
+      properties:
+        labId:
+          type: string
+        labName:
+          type: string
+        bookingCount:
+          type: integer
+        usageHours:
+          type: number
+        utilizationRate:
+          type: number
+
+    EquipmentUsageStat:
+      type: object
+      properties:
+        equipmentId:
+          type: string
+        equipmentName:
+          type: string
+        borrowCount:
+          type: integer
+        avgBorrowDays:
+          type: number
+
+    StudentRanking:
+      type: object
+      properties:
+        userId:
+          type: string
+        userRealName:
+          type: string
+        bookingCount:
+          type: integer
+        totalHours:
+          type: number
+
+    # ── 学生信息 ──
+    Gender:
+      type: string
+      enum: [MALE, FEMALE]
+
+    Student:
+      type: object
+      properties:
+        id:
+          type: string
+        labId:
+          type: string
+        labName:
+          type: string
+        name:
+          type: string
+        gender:
+          $ref: "#/components/schemas/Gender"
+        age:
+          type: integer
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        creatorId:
+          type: string
+        creatorName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    StudentCreateRequest:
+      type: object
+      required: [labId, name]
+      properties:
+        labId:
+          type: string
+        name:
+          type: string
+          maxLength: 50
+        gender:
+          $ref: "#/components/schemas/Gender"
+        age:
+          type: integer
+        address:
+          type: string
+
+    StudentUpdateRequest:
+      type: object
+      properties:
+        labId:
+          type: string
+        name:
+          type: string
+        gender:
+          $ref: "#/components/schemas/Gender"
+        age:
+          type: integer
+        address:
+          type: string
+
+    # ── 报修 ──
+    RepairStatus:
+      type: string
+      enum: [PENDING, IN_PROGRESS, COMPLETED]
+
+    RepairLog:
+      type: object
+      properties:
+        id:
+          type: string
+        equipmentId:
+          type: string
+        equipmentName:
+          type: string
+        reporterId:
+          type: string
+        reporterName:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/RepairStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RepairLogCreateRequest:
+      type: object
+      required: [equipmentId, description]
+      properties:
+        equipmentId:
+          type: string
+        description:
+          type: string
+          maxLength: 500
+
+    # ── 导出 ──
+    ExportRequest:
+      type: object
+      required: [resource, format]
+      properties:
+        resource:
+          type: string
+          enum: [bookings, borrows, usageRecords]
+        format:
+          type: string
+          enum: [csv]
+        filters:
+          type: object
+
+# ══════════════════════════════════════════
+# 接口定义
+# ══════════════════════════════════════════
+paths:
+  # ────────────────────────────────────
+  # 1. 健康检查
+  # ────────────────────────────────────
+  /health:
+    get:
+      tags: [Health]
+      summary: 服务健康检查
+      security: []
+      responses:
+        "200":
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "UP"
+                  service:
+                    type: string
+                    example: "LabReserve API"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  # ────────────────────────────────────
+  # 2. 认证模块
+  # ────────────────────────────────────
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: 用户注册 (F-01)
+      description: 新用户注册，默认 STUDENT 角色
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: 用户名已存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 用户登录 (F-02)
+      description: JWT 认证，返回 token（有效期 24h）和用户信息
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: 用户名或密码错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: 获取当前用户信息 (F-03)
+      description: 根据 JWT token 返回当前登录用户信息
+      responses:
+        "200":
+          description: 当前用户信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/UserInfo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/change-password:
+    put:
+      tags: [Auth]
+      summary: 修改密码 (F-04)
+      description: 需验证原密码
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "400":
+          description: 原密码错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  # ────────────────────────────────────
+  # 3. 用户管理
+  # ────────────────────────────────────
+  /users:
+    get:
+      tags: [Users]
+      summary: 用户列表 (F-06)
+      description: ADMIN 专属，支持按角色筛选
+      parameters:
+        - name: role
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserRole"
+        - name: enabled
+          in: query
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/User"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Users]
+      summary: 创建用户 (F-06)
+      description: ADMIN 专属，可指定任意角色
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreateRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: 用户名已存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: 用户详情
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 用户详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/User"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Users]
+      summary: 更新用户 (F-06)
+      description: ADMIN 专属
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Users]
+      summary: 删除用户（软删除）
+      description: ADMIN 专属
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /users/{userId}/toggle-enabled:
+    put:
+      tags: [Users]
+      summary: 启用/禁用用户 (F-06)
+      description: ADMIN 专属
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ────────────────────────────────────
+  # 4. 实验室管理
+  # ────────────────────────────────────
+  /labs:
+    get:
+      tags: [Labs]
+      summary: 实验室列表 (F-07)
+      description: 所有角色可访问，支持分页和筛选
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+          description: 按名称模糊搜索
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/LabStatus"
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Lab"
+    post:
+      tags: [Labs]
+      summary: 创建实验室 (F-09)
+      description: ADMIN 专属
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LabCreateRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /labs/{labId}:
+    get:
+      tags: [Labs]
+      summary: 实验室详情 (F-08)
+      description: 含开放时间、设备清单、评价列表
+      parameters:
+        - name: labId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 实验室详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/Lab"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Labs]
+      summary: 更新实验室 (F-09)
+      description: ADMIN 专属
+      parameters:
+        - name: labId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LabUpdateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Labs]
+      summary: 删除实验室 (F-09)
+      description: ADMIN 专属，软删除
+      parameters:
+        - name: labId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /labs/{labId}/status:
+    put:
+      tags: [Labs]
+      summary: 更新实验室状态 (F-11)
+      description: ADMIN 专属
+      parameters:
+        - name: labId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: "#/components/schemas/LabStatus"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  # ────────────────────────────────────
+  # 5. 开放时间
+  # ────────────────────────────────────
+  /labs/{labId}/hours:
+    get:
+      tags: [LabHours]
+      summary: 查询实验室开放时间 (F-10)
+      parameters:
+        - name: labId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 开放时间列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/LabHours"
+    put:
+      tags: [LabHours]
+      summary: 批量设置开放时间 (F-10)
+      description: ADMIN 专属，全量替换该实验室的开放时间
+      parameters:
+        - name: labId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hours]
+              properties:
+                hours:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/LabHoursBatchRequest/properties/hours/items"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ────────────────────────────────────
+  # 6. 预约管理（核心）
+  # ────────────────────────────────────
+  /bookings:
+    get:
+      tags: [Bookings]
+      summary: 预约列表 (F-15 / F-16)
+      description: |
+        学生看到自己的预约，教师/管理员看到待审批列表。
+        通过 status 参数区分。
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/BookingStatus"
+        - name: labId
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+          description: 教师/管理员按申请人筛选
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Booking"
+    post:
+      tags: [Bookings]
+      summary: 提交预约申请 (F-12)
+      description: 学生/教师选择实验室、日期、时间段、用途
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingCreateRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: 时间冲突或该时段不可预约
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bookings/{bookingId}:
+    get:
+      tags: [Bookings]
+      summary: 预约详情
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 预约详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/Booking"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Bookings]
+      summary: 修改预约 (F-18)
+      description: 仅 PENDING 状态可修改
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingUpdateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "400":
+          description: 非 PENDING 状态不可修改
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bookings/{bookingId}/approve:
+    put:
+      tags: [Bookings]
+      summary: 审批预约 (F-14)
+      description: |
+        教师/管理员审批。
+        自动检测时间冲突（与已审批预约 + 课程安排）。
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: 时间冲突
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bookings/{bookingId}/cancel:
+    put:
+      tags: [Bookings]
+      summary: 取消预约 (F-17)
+      description: 申请人可取消 PENDING 或 APPROVED 状态的预约
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "400":
+          description: 当前状态不可取消
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bookings/{bookingId}/complete:
+    put:
+      tags: [Bookings]
+      summary: 确认完成 (F-19)
+      description: 将 APPROVED 预约标记为 COMPLETED，自动生成使用记录
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /bookings/available-slots:
+    get:
+      tags: [Bookings]
+      summary: 查询可用时间段 (F-13)
+      description: |
+        给定实验室和日期，返回全天的时段列表，标记是否可用。
+        已排除：已审批预约 + 课程占用 + 不在开放时间内。
+      parameters:
+        - name: labId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: 时段列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/TimeSlot"
+
+  /bookings/pending:
+    get:
+      tags: [Bookings]
+      summary: 待审批预约列表 (F-16)
+      description: 教师/管理员查看所有待审批的预约（便捷接口，等价于 /bookings?status=PENDING）
+      parameters:
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Booking"
+
+  /bookings/mine:
+    get:
+      tags: [Bookings]
+      summary: 我的预约 (F-15)
+      description: 当前用户的预约列表（便捷接口）
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/BookingStatus"
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Booking"
+
+  # ────────────────────────────────────
+  # 7. 设备管理
+  # ────────────────────────────────────
+  /equipment:
+    get:
+      tags: [Equipment]
+      summary: 设备列表 (F-21)
+      description: 分页、按实验室/状态/名称筛选
+      parameters:
+        - name: labId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/EquipmentStatus"
+        - name: name
+          in: query
+          schema:
+            type: string
+          description: 按名称模糊搜索
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Equipment"
+    post:
+      tags: [Equipment]
+      summary: 登记设备 (F-22)
+      description: ADMIN 专属
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentCreateRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: 序列号已存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /equipment/{equipmentId}:
+    get:
+      tags: [Equipment]
+      summary: 设备详情
+      parameters:
+        - name: equipmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 设备详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/Equipment"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Equipment]
+      summary: 更新设备 (F-22)
+      description: ADMIN 专属
+      parameters:
+        - name: equipmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentUpdateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Equipment]
+      summary: 删除设备 (F-22)
+      description: ADMIN 专属，软删除
+      parameters:
+        - name: equipmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /equipment/{equipmentId}/status:
+    put:
+      tags: [Equipment]
+      summary: 更新设备状态 (F-23)
+      parameters:
+        - name: equipmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: "#/components/schemas/EquipmentStatus"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  # ────────────────────────────────────
+  # 8. 设备借用管理
+  # ────────────────────────────────────
+  /borrows:
+    get:
+      tags: [Borrows]
+      summary: 借用列表 (F-27)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/BorrowStatus"
+        - name: equipmentId
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Borrow"
+    post:
+      tags: [Borrows]
+      summary: 设备借用申请 (F-24)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BorrowCreateRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "409":
+          description: 设备已被借用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /borrows/{borrowId}:
+    get:
+      tags: [Borrows]
+      summary: 借用详情
+      parameters:
+        - name: borrowId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 借用详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/Borrow"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /borrows/{borrowId}/approve:
+    put:
+      tags: [Borrows]
+      summary: 审批借用 (F-25)
+      description: 教师/管理员审批
+      parameters:
+        - name: borrowId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /borrows/{borrowId}/return:
+    put:
+      tags: [Borrows]
+      summary: 确认归还 (F-26)
+      description: 管理员确认归还，更新设备状态为 AVAILABLE
+      parameters:
+        - name: borrowId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                actualReturn:
+                  type: string
+                  format: date
+                  description: 实际归还日期，默认当天
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /borrows/mine:
+    get:
+      tags: [Borrows]
+      summary: 我的借用记录 (F-27)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/BorrowStatus"
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Borrow"
+
+  # ────────────────────────────────────
+  # 9. 课程管理
+  # ────────────────────────────────────
+  /courses:
+    get:
+      tags: [Courses]
+      summary: 课程列表 (F-29)
+      parameters:
+        - name: semester
+          in: query
+          schema:
+            type: string
+        - name: teacherId
+          in: query
+          schema:
+            type: string
+        - name: labId
+          in: query
+          schema:
+            type: string
+        - name: className
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Course"
+    post:
+      tags: [Courses]
+      summary: 创建课程 (F-28)
+      description: 教师/管理员创建实验课程
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourseCreateRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /courses/{courseId}:
+    get:
+      tags: [Courses]
+      summary: 课程详情
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 课程详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/Course"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Courses]
+      summary: 修改课程 (F-31)
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CourseUpdateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    delete:
+      tags: [Courses]
+      summary: 删除课程 (F-31)
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+
+  /courses/mine:
+    get:
+      tags: [Courses]
+      summary: 我的课表 (F-30)
+      description: 学生按班级查看课表，教师查看自己任教的课程
+      parameters:
+        - name: semester
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Course"
+
+  # ────────────────────────────────────
+  # 10. 通知公告
+  # ────────────────────────────────────
+  /notices:
+    get:
+      tags: [Notices]
+      summary: 通知列表 (F-33)
+      parameters:
+        - name: type
+          in: query
+          schema:
+            $ref: "#/components/schemas/NoticeType"
+        - name: priority
+          in: query
+          schema:
+            $ref: "#/components/schemas/NoticePriority"
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Notice"
+    post:
+      tags: [Notices]
+      summary: 发布通知 (F-32)
+      description: 教师/管理员
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoticeCreateRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /notices/{noticeId}:
+    get:
+      tags: [Notices]
+      summary: 通知详情 (F-34)
+      parameters:
+        - name: noticeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 通知详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/Notice"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Notices]
+      summary: 更新通知
+      parameters:
+        - name: noticeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoticeUpdateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    delete:
+      tags: [Notices]
+      summary: 删除通知
+      parameters:
+        - name: noticeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+
+  # ────────────────────────────────────
+  # 11. 实验室评价
+  # ────────────────────────────────────
+  /reviews:
+    get:
+      tags: [Reviews]
+      summary: 评价列表 (F-36)
+      parameters:
+        - name: labId
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+          description: 用于"我的评价"
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Review"
+    post:
+      tags: [Reviews]
+      summary: 提交评价 (F-35)
+      description: 学生完成预约后对实验室评分（1-5 星）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewCreateRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "400":
+          description: 预约未完成或已评价
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: 该预约已评价过
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /reviews/mine:
+    get:
+      tags: [Reviews]
+      summary: 我的评价 (F-37)
+      parameters:
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Review"
+
+  /reviews/{reviewId}:
+    delete:
+      tags: [Reviews]
+      summary: 删除评价
+      parameters:
+        - name: reviewId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+
+  # ────────────────────────────────────
+  # 12. 使用记录
+  # ────────────────────────────────────
+  /usage-records:
+    get:
+      tags: [UsageRecords]
+      summary: 使用记录查询 (F-38)
+      description: 按实验室/用户/日期范围筛选，教师/管理员可查看
+      parameters:
+        - name: labId
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/UsageRecord"
+
+  /usage-records/export:
+    post:
+      tags: [UsageRecords]
+      summary: 导出使用记录 (F-39)
+      description: ADMIN 导出 CSV
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportRequest"
+      responses:
+        "200":
+          description: CSV 文件
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ────────────────────────────────────
+  # 13. 数据统计报表
+  # ────────────────────────────────────
+  /dashboard/kpi:
+    get:
+      tags: [Dashboard]
+      summary: 综合概览 KPI (F-40)
+      description: 今日预约数、设备借用数、实验室使用率、待审批数
+      responses:
+        "200":
+          description: KPI 数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/DashboardKpi"
+
+  /dashboard/lab-usage:
+    get:
+      tags: [Dashboard]
+      summary: 实验室使用率统计 (F-41)
+      parameters:
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: 使用率数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/LabUsageStat"
+
+  /dashboard/equipment-usage:
+    get:
+      tags: [Dashboard]
+      summary: 设备利用率统计 (F-42)
+      parameters:
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: 设备利用率
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/EquipmentUsageStat"
+
+  /dashboard/student-ranking:
+    get:
+      tags: [Dashboard]
+      summary: 学生使用排行 (F-43)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 100
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: 排行数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/StudentRanking"
+
+  # ────────────────────────────────────
+  # 14. 学生信息管理
+  # ────────────────────────────────────
+  /students:
+    get:
+      tags: [Students]
+      summary: 学生列表
+      parameters:
+        - name: labId
+          in: query
+          schema:
+            type: string
+        - name: name
+          in: query
+          schema:
+            type: string
+          description: 按姓名搜索
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/Student"
+    post:
+      tags: [Students]
+      summary: 录入学生信息
+      description: 教师/管理员录入
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentCreateRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+
+  /students/{studentId}:
+    get:
+      tags: [Students]
+      summary: 学生详情
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 学生详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/Student"
+    put:
+      tags: [Students]
+      summary: 更新学生信息
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentUpdateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    delete:
+      tags: [Students]
+      summary: 删除学生信息
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+
+  # ────────────────────────────────────
+  # 15. 报修记录
+  # ────────────────────────────────────
+  /repair-logs:
+    get:
+      tags: [RepairLogs]
+      summary: 报修记录列表
+      parameters:
+        - name: equipmentId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/RepairStatus"
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: 分页结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/CursorPageResult"
+                          - properties:
+                              records:
+                                type: array
+                                items:
+                                  $ref: "#/components/schemas/RepairLog"
+    post:
+      tags: [RepairLogs]
+      summary: 提交报修
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RepairLogCreateRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+
+  /repair-logs/{repairLogId}:
+    get:
+      tags: [RepairLogs]
+      summary: 报修详情
+      parameters:
+        - name: repairLogId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 报修详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/RepairLog"
+
+  /repair-logs/{repairLogId}/status:
+    put:
+      tags: [RepairLogs]
+      summary: 更新报修状态
+      parameters:
+        - name: repairLogId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: "#/components/schemas/RepairStatus"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
