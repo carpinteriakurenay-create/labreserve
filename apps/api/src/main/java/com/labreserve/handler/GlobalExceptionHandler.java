@@ -19,7 +19,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleBusinessException(BusinessException e) {
         HttpStatus status = switch (e.getCode()) {
             case "NOT_FOUND" -> HttpStatus.NOT_FOUND;
-            case "USERNAME_EXISTS", "SERIAL_NUMBER_EXISTS", "TIME_CONFLICT",
+            case "USERNAME_EXISTS", "NAME_EXISTS", "SERIAL_NUMBER_EXISTS", "TIME_CONFLICT",
                  "ALREADY_REVIEWED", "EQUIPMENT_UNAVAILABLE", "ALREADY_PROCESSED" -> HttpStatus.CONFLICT;
             case "INVALID_CREDENTIALS" -> HttpStatus.UNAUTHORIZED;
             case "ACCOUNT_DISABLED", "FORBIDDEN" -> HttpStatus.FORBIDDEN;
