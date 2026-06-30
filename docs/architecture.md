@@ -358,7 +358,7 @@ flowchart LR
 # 1. 启动基础设施
 docker compose up -d
 
-# 2. 启动后端（需要 Java 21 + Maven）
+# 2. 启动后端（需要 Java 17 + Maven）
 cd apps/api && mvn spring-boot:run -Dspring-boot.run.profiles=dev
 
 # 3. 启动前端
@@ -468,7 +468,7 @@ RUN mvn dependency:go-offline
 COPY src/ src/
 RUN mvn package -DskipTests
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
@@ -643,7 +643,7 @@ flowchart LR
 | Vue Router   | 4.x      | 前端路由                           |
 | TypeScript   | 5.8      | 类型系统                           |
 | Spring Boot  | 3.4.7    | 后端框架                           |
-| Java         | 21 (LTS) | 运行环境                           |
+| Java         | 17 (LTS) | 运行环境                           |
 | MyBatis-Plus | 3.5.11   | ORM                                |
 | MySQL        | 8.0      | 关系型数据库                       |
 | Redis        | 7        | 缓存 / 分布式锁                    |

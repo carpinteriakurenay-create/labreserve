@@ -289,7 +289,7 @@ JWT 的安全性完全依赖于 secret 的保密性。若 secret 硬编码在 `a
 
 ---
 
-### R-S03: Java 21 + Spring Boot 3.4 版本兼容性问题
+### R-S03: Java 17 + Spring Boot 3.4 版本兼容性问题
 
 | 维度       | 评估                                   |
 | ---------- | -------------------------------------- |
@@ -299,7 +299,7 @@ JWT 的安全性完全依赖于 secret 的保密性。若 secret 硬编码在 `a
 
 **问题描述：**
 
-Spring Boot 3.x 要求 Java 17+，项目使用 Java 21。MyBatis-Plus 3.5.11 已适配 Spring Boot 3。但 jjwt、Redisson、Knife4j 等后续引入的依赖可能遇到版本不匹配。
+Spring Boot 3.x 要求 Java 17+，项目使用 Java 17。MyBatis-Plus 3.5.11 已适配 Spring Boot 3。但 jjwt、Redisson、Knife4j 等后续引入的依赖可能遇到版本不匹配。
 
 **应对策略：**
 

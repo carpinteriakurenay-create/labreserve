@@ -5,7 +5,7 @@
 ### 技术栈
 
 - **前端**：Vue 3 + TypeScript + Vite + Element Plus + Pinia + Vue Router
-- **后端**：Java 21 + Spring Boot 3.4 + MyBatis-Plus 3.5 + MySQL 8.0
+- **后端**：Java 17 + Spring Boot 3.4 + MyBatis-Plus 3.5 + MySQL 8.0
 - **缓存**：Redis 7
 - **测试**：Vitest（前端单元测试）+ JUnit 5（后端单元测试）+ Postman / Apifox（接口测试）
 - **部署**：Docker + Nginx
@@ -84,7 +84,7 @@ E:/ULRS/
 # 前端
 pnpm dev:web                        # 启动 Vite 开发服务器 :5173
 
-# 后端（需要 Java 21 + Maven）
+# 后端（需要 Java 17 + Maven）
 cd apps/api && mvn spring-boot:run  # 启动 Spring Boot :8080
 
 # 基础设施

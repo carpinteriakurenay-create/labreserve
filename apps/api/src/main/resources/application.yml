@@ -31,3 +31,7 @@ mybatis-plus:
 
 server:
   port: 8080
+
+jwt:
+  secret: labreserve-jwt-secret-key-change-in-production-2026
+  expiration: 86400000
