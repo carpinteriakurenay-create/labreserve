@@ -86,6 +86,12 @@ onMounted(async () => {
         <div v-if="lab.imageUrl" class="lab-image">
           <el-image :src="lab.imageUrl" fit="cover" style="max-width: 400px; border-radius: 4px" />
         </div>
+
+        <div class="booking-action">
+          <el-button type="primary" @click="router.push(`/bookings/create?labId=${lab.id}`)">
+            预约此实验室
+          </el-button>
+        </div>
       </el-card>
 
       <el-card class="hours-card">
@@ -166,6 +172,11 @@ onMounted(async () => {
 
 .lab-image {
   margin-top: 16px;
+}
+
+.booking-action {
+  margin-top: 16px;
+  text-align: right;
 }
 
 .hours-list {

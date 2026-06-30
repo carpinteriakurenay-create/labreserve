@@ -30,6 +30,22 @@ const router = createRouter({
           component: () => import("@/views/LabsView.vue"),
         },
         {
+          path: "bookings/create",
+          name: "bookingCreate",
+          component: () => import("@/views/BookingCreateView.vue"),
+        },
+        {
+          path: "bookings/mine",
+          name: "myBookings",
+          component: () => import("@/views/MyBookingsView.vue"),
+        },
+        {
+          path: "approvals",
+          name: "pendingApprovals",
+          component: () => import("@/views/PendingApprovalsView.vue"),
+          meta: { roles: ["TEACHER", "ADMIN"] },
+        },
+        {
           path: "admin/labs",
           name: "adminLabs",
           component: () => import("@/views/AdminLabsView.vue"),

@@ -2,7 +2,14 @@
 import { computed } from "vue";
 import type { Component } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { HomeFilled, UserFilled, OfficeBuilding, Setting } from "@element-plus/icons-vue";
+import {
+  HomeFilled,
+  UserFilled,
+  OfficeBuilding,
+  Setting,
+  Tickets,
+  Checked,
+} from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
@@ -19,6 +26,8 @@ interface MenuItem {
 const menuItems: MenuItem[] = [
   { index: "/", title: "系统首页", icon: HomeFilled },
   { index: "/labs", title: "实验室列表", icon: OfficeBuilding },
+  { index: "/bookings/mine", title: "我的预约", icon: Tickets },
+  { index: "/approvals", title: "预约审批", icon: Checked, roles: ["TEACHER", "ADMIN"] },
   { index: "/admin/users", title: "用户管理", icon: UserFilled, roles: ["ADMIN"] },
   { index: "/admin/labs", title: "实验室管理", icon: Setting, roles: ["ADMIN"] },
 ];
