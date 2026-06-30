@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import type { Component } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { HomeFilled, UserFilled } from "@element-plus/icons-vue";
+import { HomeFilled, UserFilled, OfficeBuilding, Setting } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
@@ -11,13 +12,15 @@ const authStore = useAuthStore();
 interface MenuItem {
   index: string;
   title: string;
-  icon: typeof HomeFilled;
+  icon: Component;
   roles?: string[];
 }
 
 const menuItems: MenuItem[] = [
   { index: "/", title: "系统首页", icon: HomeFilled },
+  { index: "/labs", title: "实验室列表", icon: OfficeBuilding },
   { index: "/admin/users", title: "用户管理", icon: UserFilled, roles: ["ADMIN"] },
+  { index: "/admin/labs", title: "实验室管理", icon: Setting, roles: ["ADMIN"] },
 ];
 
 const visibleMenuItems = computed(() =>

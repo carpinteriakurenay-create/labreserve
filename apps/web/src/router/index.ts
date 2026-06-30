@@ -25,6 +25,22 @@ const router = createRouter({
           component: () => import("@/views/Home.vue"),
         },
         {
+          path: "labs",
+          name: "labs",
+          component: () => import("@/views/LabsView.vue"),
+        },
+        {
+          path: "admin/labs",
+          name: "adminLabs",
+          component: () => import("@/views/AdminLabsView.vue"),
+          meta: { roles: ["ADMIN"] },
+        },
+        {
+          path: "labs/:id",
+          name: "labDetail",
+          component: () => import("@/views/LabDetailView.vue"),
+        },
+        {
           path: "admin/users",
           name: "adminUsers",
           component: () => import("@/views/AdminUsersView.vue"),
