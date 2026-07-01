@@ -11,6 +11,9 @@ import {
   Checked,
   Monitor,
   ShoppingCart,
+  Bell,
+  Notebook,
+  Reading,
 } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 
@@ -36,6 +39,9 @@ const menuItems: MenuItem[] = [
   { index: "/admin/users", title: "用户管理", icon: UserFilled, roles: ["ADMIN"] },
   { index: "/admin/labs", title: "实验室管理", icon: Setting, roles: ["ADMIN"] },
   { index: "/admin/equipment", title: "设备管理", icon: Monitor, roles: ["ADMIN"] },
+  { index: "/notices", title: "通知公告", icon: Bell },
+  { index: "/schedule", title: "我的课表", icon: Notebook },
+  { index: "/admin/courses", title: "课程管理", icon: Reading, roles: ["ADMIN"] },
 ];
 
 const visibleMenuItems = computed(() =>

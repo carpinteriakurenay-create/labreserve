@@ -31,6 +31,7 @@ export interface NoticeUpdateRequest {
   content?: string;
   type?: NoticeType;
   priority?: NoticePriority;
+  labId?: string;
 }
 
 export interface NoticeQuery {
