@@ -62,6 +62,28 @@ const router = createRouter({
           component: () => import("@/views/AdminUsersView.vue"),
           meta: { roles: ["ADMIN"] },
         },
+        {
+          path: "admin/equipment",
+          name: "adminEquipment",
+          component: () => import("@/views/AdminEquipmentView.vue"),
+          meta: { roles: ["ADMIN"] },
+        },
+        {
+          path: "borrows/request",
+          name: "borrowRequest",
+          component: () => import("@/views/BorrowRequestView.vue"),
+        },
+        {
+          path: "borrows/mine",
+          name: "myBorrows",
+          component: () => import("@/views/MyBorrowsView.vue"),
+        },
+        {
+          path: "admin/borrows",
+          name: "adminBorrows",
+          component: () => import("@/views/AdminBorrowsView.vue"),
+          meta: { roles: ["TEACHER", "ADMIN"] },
+        },
       ],
     },
   ],

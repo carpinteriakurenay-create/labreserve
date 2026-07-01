@@ -9,6 +9,8 @@ import {
   Setting,
   Tickets,
   Checked,
+  Monitor,
+  ShoppingCart,
 } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 
@@ -27,9 +29,13 @@ const menuItems: MenuItem[] = [
   { index: "/", title: "系统首页", icon: HomeFilled },
   { index: "/labs", title: "实验室列表", icon: OfficeBuilding },
   { index: "/bookings/mine", title: "我的预约", icon: Tickets },
+  { index: "/borrows/request", title: "借用申请", icon: ShoppingCart },
+  { index: "/borrows/mine", title: "我的借用", icon: Tickets },
   { index: "/approvals", title: "预约审批", icon: Checked, roles: ["TEACHER", "ADMIN"] },
+  { index: "/admin/borrows", title: "借用管理", icon: ShoppingCart, roles: ["TEACHER", "ADMIN"] },
   { index: "/admin/users", title: "用户管理", icon: UserFilled, roles: ["ADMIN"] },
   { index: "/admin/labs", title: "实验室管理", icon: Setting, roles: ["ADMIN"] },
+  { index: "/admin/equipment", title: "设备管理", icon: Monitor, roles: ["ADMIN"] },
 ];
 
 const visibleMenuItems = computed(() =>
