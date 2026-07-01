@@ -6,11 +6,15 @@ import {
   exportUsageRecordsCsv,
   type UsageRecordQueryParams,
 } from "@/api/usageRecords";
-import type { UsageRecord } from "@labreserve/shared";
+import { getLabs } from "@/api/labs";
+import { getUsers } from "@/api/users";
+import type { UsageRecord, Lab, User } from "@labreserve/shared";
 
 const loading = ref(false);
 const exporting = ref(false);
 const records = ref<UsageRecord[]>([]);
+const labs = ref<Lab[]>([]);
+const users = ref<User[]>([]);
 const total = ref(0);
 const pageNum = ref(1);
 const pageSize = ref(20);
@@ -50,6 +54,24 @@ async function fetchRecords() {
     ElMessage.error("加载使用记录失败");
   } finally {
     loading.value = false;
+  }
+}
+
+async function fetchLabOptions() {
+  try {
+    const result = await getLabs({ pageSize: 1000 });
+    labs.value = result.records;
+  } catch {
+    // ignore
+  }
+}
+
+async function fetchUserOptions() {
+  try {
+    const result = await getUsers({ pageSize: 1000 });
+    users.value = result.records;
+  } catch {
+    // ignore
   }
 }
 
@@ -106,6 +128,8 @@ async function handleExport() {
 
 onMounted(() => {
   fetchRecords();
+  fetchLabOptions();
+  fetchUserOptions();
 });
 </script>
 
@@ -116,10 +140,36 @@ onMounted(() => {
     <el-card class="filter-card" shadow="never">
       <el-form :inline="true" :model="filters" class="filter-form">
         <el-form-item label="实验室">
-          <el-input v-model="filters.labId" placeholder="实验室ID" clearable />
+          <el-select
+            v-model="filters.labId"
+            placeholder="选择实验室"
+            clearable
+            style="width: 180px"
+            @change="handleSearch"
+          >
+            <el-option
+              v-for="lab in labs"
+              :key="lab.id"
+              :label="lab.name"
+              :value="Number(lab.id)"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="用户">
-          <el-input v-model="filters.userId" placeholder="用户ID" clearable />
+          <el-select
+            v-model="filters.userId"
+            placeholder="选择用户"
+            clearable
+            style="width: 180px"
+            @change="handleSearch"
+          >
+            <el-option
+              v-for="user in users"
+              :key="user.id"
+              :label="user.realName"
+              :value="Number(user.id)"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="日期范围">
           <el-date-picker
