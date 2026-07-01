@@ -37,7 +37,19 @@ const form = reactive({
 const rules: FormRules = {
   labId: [{ required: true, message: "请选择所属实验室", trigger: "change" }],
   name: [{ required: true, message: "请输入设备名称", trigger: "blur" }],
-  serialNumber: [{ required: true, message: "请输入序列号", trigger: "blur" }],
+  serialNumber: [
+    { required: true, message: "请输入序列号", trigger: "blur" },
+    {
+      validator: (_rule, value, callback) => {
+        if (!value || String(value).trim().length < 2) {
+          callback(new Error("序列号至少 2 个字符"));
+        } else {
+          callback();
+        }
+      },
+      trigger: "blur",
+    },
+  ],
 };
 
 async function fetchEquipments() {
@@ -164,6 +176,27 @@ async function handleDelete(equipment: Equipment) {
   fetchEquipments();
 }
 
+async function handleMarkMaintenance(equipment: Equipment) {
+  try {
+    await ElMessageBox.confirm(`确定要将设备「${equipment.name}」标记为"维修中"吗？`, "报修确认", {
+      confirmButtonText: "确认",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+  } catch {
+    return;
+  }
+  await equipmentApi.updateEquipmentStatus(Number(equipment.id), "MAINTENANCE");
+  ElMessage.success("设备已标记为维修中");
+  fetchEquipments();
+}
+
+async function handleRestoreAvailable(equipment: Equipment) {
+  await equipmentApi.updateEquipmentStatus(Number(equipment.id), "AVAILABLE");
+  ElMessage.success("设备已恢复为可用");
+  fetchEquipments();
+}
+
 function statusTagType(status: string) {
   return status === "AVAILABLE" ? "success" : status === "BORROWED" ? "warning" : "danger";
 }
@@ -236,10 +269,28 @@ onMounted(() => {
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="160">
+      <el-table-column label="操作" width="280">
         <template #default="{ row }">
           <el-button size="small" text type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button size="small" text type="danger" @click="handleDelete(row)">删除</el-button>
+          <el-button
+            v-if="row.status !== 'MAINTENANCE' && row.status !== 'BORROWED'"
+            size="small"
+            text
+            type="warning"
+            @click="handleMarkMaintenance(row)"
+          >
+            报修
+          </el-button>
+          <el-button
+            v-if="row.status === 'MAINTENANCE'"
+            size="small"
+            text
+            type="success"
+            @click="handleRestoreAvailable(row)"
+          >
+            恢复可用
+          </el-button>
         </template>
       </el-table-column>
     </el-table>

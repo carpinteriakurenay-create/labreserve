@@ -22,6 +22,10 @@ const rejectDialogVisible = ref(false);
 const rejectBorrowId = ref<number | null>(null);
 const rejectReason = ref("");
 
+const returnDialogVisible = ref(false);
+const returnBorrowId = ref<number | null>(null);
+const returnDate = ref("");
+
 function handleTabChange() {
   pageNum.value = 1;
   fetchBorrows();
@@ -91,18 +95,22 @@ async function handleReject() {
   fetchBorrows();
 }
 
-async function handleReturn(borrow: Borrow) {
-  try {
-    await ElMessageBox.confirm(
-      `确认「${borrow.equipmentName}」已归还？设备状态将恢复为可借用。`,
-      "归还确认",
-      { confirmButtonText: "确认归还", cancelButtonText: "取消", type: "warning" },
-    );
-  } catch {
+function openReturnDialog(borrow: Borrow) {
+  returnBorrowId.value = Number(borrow.id);
+  returnDate.value = new Date().toISOString().slice(0, 10);
+  returnDialogVisible.value = true;
+}
+
+async function handleReturn() {
+  if (!returnDate.value) {
+    ElMessage.warning("请选择归还日期");
     return;
   }
-  await borrowsApi.returnBorrow(Number(borrow.id));
+  if (returnBorrowId.value === null) return;
+
+  await borrowsApi.returnBorrow(returnBorrowId.value, returnDate.value);
   ElMessage.success("已确认归还");
+  returnDialogVisible.value = false;
   fetchBorrows();
 }
 
@@ -141,6 +149,21 @@ onMounted(() => {
       <el-table-column prop="purpose" label="用途" min-width="150">
         <template #default="{ row }">{{ row.purpose || "-" }}</template>
       </el-table-column>
+      <el-table-column prop="rejectReason" label="拒绝原因" min-width="150">
+        <template #default="{ row }">
+          <template v-if="row.rejectReason">
+            <el-tooltip
+              v-if="row.rejectReason.length > 20"
+              :content="row.rejectReason"
+              placement="top"
+            >
+              <span>{{ row.rejectReason.slice(0, 20) }}...</span>
+            </el-tooltip>
+            <span v-else>{{ row.rejectReason }}</span>
+          </template>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="statusTagType(row.status)" size="small">
@@ -157,7 +180,9 @@ onMounted(() => {
             <el-button size="small" type="danger" @click="openReject(row)">拒绝</el-button>
           </template>
           <template v-else-if="row.status === 'BORROWING'">
-            <el-button size="small" type="primary" @click="handleReturn(row)">确认归还</el-button>
+            <el-button size="small" type="primary" @click="openReturnDialog(row)"
+              >确认归还</el-button
+            >
           </template>
           <span v-else style="color: #909399">-</span>
         </template>
@@ -185,6 +210,24 @@ onMounted(() => {
       <template #footer>
         <el-button @click="rejectDialogVisible = false">取消</el-button>
         <el-button type="danger" @click="handleReject">确认拒绝</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="returnDialogVisible" title="确认归还" width="400px">
+      <el-form label-width="100px">
+        <el-form-item label="归还日期" required>
+          <el-date-picker
+            v-model="returnDate"
+            type="date"
+            placeholder="选择归还日期"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="returnDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleReturn">确认归还</el-button>
       </template>
     </el-dialog>
   </div>

@@ -61,6 +61,17 @@ function statusTagType(status: string) {
   return map[status] ?? "info";
 }
 
+function statusColor(status: string) {
+  const map: Record<string, string> = {
+    PENDING: "#409EFF",
+    APPROVED: "#67C23A",
+    REJECTED: "#F56C6C",
+    BORROWING: "#67C23A",
+    RETURNED: "#909399",
+  };
+  return map[status] ?? "#909399";
+}
+
 onMounted(() => {
   fetchMyBorrows();
 });
@@ -91,31 +102,55 @@ onMounted(() => {
       </div>
     </div>
 
-    <el-table :data="borrows" v-loading="loading" stripe>
-      <el-table-column prop="equipmentName" label="设备名称" min-width="150" />
-      <el-table-column prop="borrowDate" label="借用日期" width="120" />
-      <el-table-column prop="expectedReturn" label="预计归还" width="120" />
-      <el-table-column prop="actualReturn" label="实际归还" width="120">
-        <template #default="{ row }">{{ row.actualReturn || "-" }}</template>
-      </el-table-column>
-      <el-table-column prop="purpose" label="用途" min-width="150">
-        <template #default="{ row }">{{ row.purpose || "-" }}</template>
-      </el-table-column>
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="statusTagType(row.status)" size="small">
-            {{
-              BORROW_STATUS_LABELS[row.status as keyof typeof BORROW_STATUS_LABELS] ?? row.status
-            }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="rejectReason" label="拒绝原因" min-width="150">
-        <template #default="{ row }">{{ row.rejectReason || "-" }}</template>
-      </el-table-column>
-    </el-table>
+    <div v-loading="loading">
+      <el-empty v-if="!loading && borrows.length === 0" description="暂无借用记录" />
 
-    <div class="pagination">
+      <el-timeline v-else>
+        <el-timeline-item
+          v-for="item in borrows"
+          :key="item.id"
+          :timestamp="item.borrowDate"
+          :color="statusColor(item.status)"
+          placement="top"
+        >
+          <el-card class="borrow-card" shadow="hover">
+            <div class="card-header">
+              <span class="equipment-name">{{ item.equipmentName }}</span>
+              <el-tag :type="statusTagType(item.status)" size="small">
+                {{
+                  BORROW_STATUS_LABELS[item.status as keyof typeof BORROW_STATUS_LABELS] ??
+                  item.status
+                }}
+              </el-tag>
+            </div>
+            <div class="card-body">
+              <div class="info-row">
+                <span class="label">借用日期：</span>
+                <span>{{ item.borrowDate }}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">预计归还：</span>
+                <span>{{ item.expectedReturn }}</span>
+              </div>
+              <div v-if="item.actualReturn" class="info-row">
+                <span class="label">实际归还：</span>
+                <span>{{ item.actualReturn }}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">用途：</span>
+                <span>{{ item.purpose || "-" }}</span>
+              </div>
+              <div v-if="item.rejectReason" class="info-row">
+                <span class="label">拒绝原因：</span>
+                <span class="reject-reason">{{ item.rejectReason }}</span>
+              </div>
+            </div>
+          </el-card>
+        </el-timeline-item>
+      </el-timeline>
+    </div>
+
+    <div v-if="total > pageSize" class="pagination">
       <el-pagination
         v-model:current-page="pageNum"
         v-model:page-size="pageSize"
@@ -143,12 +178,47 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
 .filters {
   display: flex;
   align-items: center;
+}
+
+.borrow-card {
+  margin-bottom: 4px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.equipment-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.info-row {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.info-row .label {
+  color: #909399;
+}
+
+.reject-reason {
+  color: #f56c6c;
 }
 
 .pagination {
