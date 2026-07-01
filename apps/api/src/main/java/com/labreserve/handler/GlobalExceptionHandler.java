@@ -24,7 +24,9 @@ public class GlobalExceptionHandler {
             case "INVALID_CREDENTIALS" -> HttpStatus.UNAUTHORIZED;
             case "ACCOUNT_DISABLED", "FORBIDDEN" -> HttpStatus.FORBIDDEN;
             case "WRONG_PASSWORD", "LAB_CLOSED", "OUTSIDE_OPEN_HOURS",
-                 "BOOKING_NOT_COMPLETED", "BOOKING_NOT_CANCELLABLE", "BOOKING_NOT_EDITABLE" -> HttpStatus.BAD_REQUEST;
+                 "BOOKING_NOT_COMPLETED", "BOOKING_NOT_CANCELLABLE", "BOOKING_NOT_EDITABLE",
+                 "INVALID_STATUS", "INVALID_SEMESTER", "INVALID_DAY_OF_WEEK",
+                 "INVALID_TIME_RANGE", "INVALID_DATE_RANGE", "CLASS_REQUIRED" -> HttpStatus.BAD_REQUEST;
             default -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
 
