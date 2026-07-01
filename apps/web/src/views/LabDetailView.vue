@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { LAB_STATUS_LABELS, LabStatus } from "@labreserve/shared";
-import type { Lab, LabHours } from "@labreserve/shared";
+import type { Lab, LabHours, Review } from "@labreserve/shared";
 import * as labsApi from "@/api/labs";
+import { getReviewsByLab } from "@/api/reviews";
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +26,18 @@ const loading = ref(true);
 const lab = ref<Lab | null>(null);
 const hours = ref<LabHours[]>([]);
 
+// Reviews state
+const reviews = ref<Review[]>([]);
+const reviewsTotal = ref(0);
+const reviewsPageNum = ref(1);
+const reviewsPageSize = 5;
+
+const averageRating = computed(() => {
+  if (reviews.value.length === 0) return 0;
+  const sum = reviews.value.reduce((acc, r) => acc + r.rating, 0);
+  return sum / reviews.value.length;
+});
+
 function getHoursForDay(dayOfWeek: number): LabHours[] {
   return hours.value
     .filter((h) => h.dayOfWeek === dayOfWeek)
@@ -41,6 +54,25 @@ function goBack() {
   router.push("/labs");
 }
 
+async function fetchReviews() {
+  try {
+    const id = Number(route.params.id);
+    const page = await getReviewsByLab(id, {
+      pageNum: reviewsPageNum.value,
+      pageSize: reviewsPageSize,
+    });
+    reviews.value = page.records;
+    reviewsTotal.value = page.total;
+  } catch {
+    // silently ignore
+  }
+}
+
+function handleReviewsPageChange(p: number) {
+  reviewsPageNum.value = p;
+  fetchReviews();
+}
+
 onMounted(async () => {
   try {
     const id = Number(route.params.id);
@@ -50,6 +82,7 @@ onMounted(async () => {
     ]);
     lab.value = labData;
     hours.value = hoursData;
+    await fetchReviews();
   } finally {
     loading.value = false;
   }
@@ -123,6 +156,44 @@ onMounted(async () => {
           本实验室共有 {{ lab.equipmentNum }} 台设备。设备管理功能即将上线。
         </div>
       </el-card>
+
+      <!-- Reviews section -->
+      <el-card class="reviews-card">
+        <template #header>
+          <div class="reviews-header">
+            <span class="section-title">用户评价</span>
+            <span v-if="reviewsTotal > 0" class="rating-summary">
+              <el-rate :model-value="averageRating" disabled show-score :max="5" />
+              <span class="review-count">({{ reviewsTotal }} 条评价)</span>
+            </span>
+          </div>
+        </template>
+        <template v-if="reviews.length > 0">
+          <div class="reviews-list">
+            <div v-for="review in reviews" :key="review.id" class="review-item">
+              <div class="review-meta">
+                <span class="review-user">{{ review.userName || "匿名用户" }}</span>
+                <el-rate :model-value="review.rating" disabled size="small" />
+                <span class="review-time">{{
+                  new Date(review.createdAt).toLocaleString("zh-CN")
+                }}</span>
+              </div>
+              <p v-if="review.comment" class="review-comment">{{ review.comment }}</p>
+            </div>
+          </div>
+          <div v-if="reviewsTotal > reviewsPageSize" class="reviews-pagination">
+            <el-pagination
+              v-model:current-page="reviewsPageNum"
+              :total="reviewsTotal"
+              :page-size="reviewsPageSize"
+              layout="total, prev, pager, next"
+              small
+              @current-change="handleReviewsPageChange"
+            />
+          </div>
+        </template>
+        <el-empty v-else description="暂无评价" :image-size="80" />
+      </el-card>
     </template>
 
     <el-result
@@ -161,7 +232,8 @@ onMounted(async () => {
 
 .info-card,
 .hours-card,
-.equipment-card {
+.equipment-card,
+.reviews-card {
   margin-bottom: 20px;
 }
 
@@ -211,5 +283,66 @@ onMounted(async () => {
 .placeholder-text {
   color: #909399;
   font-size: 14px;
+}
+
+.reviews-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rating-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-count {
+  font-size: 13px;
+  color: #909399;
+  font-weight: 400;
+}
+
+.reviews-list {
+  padding: 4px 0;
+}
+
+.review-item {
+  padding: 12px 0;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.review-item:last-child {
+  border-bottom: none;
+}
+
+.review-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.review-user {
+  font-weight: 500;
+  color: #303133;
+}
+
+.review-time {
+  font-size: 12px;
+  color: #c0c4cc;
+}
+
+.review-comment {
+  margin: 0;
+  font-size: 14px;
+  color: #606266;
+  line-height: 1.6;
+}
+
+.reviews-pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
 }
 </style>

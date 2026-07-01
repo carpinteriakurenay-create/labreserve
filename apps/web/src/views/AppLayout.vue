@@ -14,6 +14,9 @@ import {
   Bell,
   Notebook,
   Reading,
+  Star,
+  DataAnalysis,
+  Document,
 } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 
@@ -42,6 +45,9 @@ const menuItems: MenuItem[] = [
   { index: "/notices", title: "通知公告", icon: Bell },
   { index: "/schedule", title: "我的课表", icon: Notebook },
   { index: "/admin/courses", title: "课程管理", icon: Reading, roles: ["ADMIN"] },
+  { index: "/dashboard", title: "数据仪表盘", icon: DataAnalysis },
+  { index: "/reviews/mine", title: "我的评价", icon: Star },
+  { index: "/admin/usage-records", title: "使用记录", icon: Document, roles: ["TEACHER", "ADMIN"] },
 ];
 
 const visibleMenuItems = computed(() =>

@@ -56,6 +56,9 @@ importers:
       axios:
         specifier: ^1.18.1
         version: 1.18.1
+      echarts:
+        specifier: ^6.1.0
+        version: 6.1.0
       element-plus:
         specifier: ^2.10.5
         version: 2.14.2(vue@3.5.39(typescript@5.9.3))
@@ -1829,6 +1832,12 @@ packages:
         integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==,
       }
 
+  echarts@6.1.0:
+    resolution:
+      {
+        integrity: sha512-q0yaFPggC9FUdsWH4blavRWFmxdrIodbkoKNAjJudAI6CA9gNPxHtV2RcZNEepZVlk4yvBYkOkbk6HIVpIyHZA==,
+      }
+
   editorconfig@1.0.7:
     resolution:
       {
@@ -3532,6 +3541,12 @@ packages:
     peerDependencies:
       typescript: ">=4.8.4"
 
+  tslib@2.3.0:
+    resolution:
+      {
+        integrity: sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==,
+      }
+
   type-check@0.4.0:
     resolution:
       {
@@ -3921,6 +3936,12 @@ packages:
         integrity: sha512-4LCcse/U2MHZ63HAJVE+v71o7yOdIe4cZ70Wpf8D/IyjDKYQLV5GD46B+hSTjJsvV5PztjvHoU580EftxjDZFQ==,
       }
     engines: { node: ">=12.20" }
+
+  zrender@6.1.0:
+    resolution:
+      {
+        integrity: sha512-oEGMDB6pOP2S6OwRR4PdVv610zrjnA3Bh+JnSG12fYJlBKjtNAoEb5fSUoCOOINlH96I2fU38/A2UpRKs67xYQ==,
+      }
 
 snapshots:
   "@asamuzakjp/css-color@3.2.0":
@@ -4912,6 +4933,11 @@ snapshots:
 
   eastasianwidth@0.2.0: {}
 
+  echarts@6.1.0:
+    dependencies:
+      tslib: 2.3.0
+      zrender: 6.1.0
+
   editorconfig@1.0.7:
     dependencies:
       "@one-ini/wasm": 0.1.1
@@ -5850,6 +5876,8 @@ snapshots:
     dependencies:
       typescript: 5.9.3
 
+  tslib@2.3.0: {}
+
   type-check@0.4.0:
     dependencies:
       prelude-ls: 1.2.1
@@ -6120,3 +6148,7 @@ snapshots:
   yocto-queue@0.1.0: {}
 
   yocto-queue@1.2.2: {}
+
+  zrender@6.1.0:
+    dependencies:
+      tslib: 2.3.0

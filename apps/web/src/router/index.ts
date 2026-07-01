@@ -100,6 +100,22 @@ const router = createRouter({
           name: "notices",
           component: () => import("@/views/NoticesView.vue"),
         },
+        {
+          path: "reviews/mine",
+          name: "myReviews",
+          component: () => import("@/views/MyReviewsView.vue"),
+        },
+        {
+          path: "dashboard",
+          name: "dashboard",
+          component: () => import("@/views/DashboardView.vue"),
+        },
+        {
+          path: "admin/usage-records",
+          name: "usageRecords",
+          component: () => import("@/views/UsageRecordsView.vue"),
+          meta: { roles: ["TEACHER", "ADMIN"] },
+        },
       ],
     },
   ],

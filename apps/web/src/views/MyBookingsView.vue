@@ -2,7 +2,10 @@
 import { reactive, ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { BookingStatus, BOOKING_STATUS_LABELS } from "@labreserve/shared";
+import type { Review } from "@labreserve/shared";
 import * as bookingsApi from "@/api/bookings";
+import { getReviewByBooking } from "@/api/reviews";
+import ReviewForm from "@/components/ReviewForm.vue";
 import type { BookingPage } from "@/api/bookings";
 
 const loading = ref(false);
@@ -33,6 +36,11 @@ const statusType: Record<string, "warning" | "success" | "danger" | "info" | "">
 
 const cancellableStatuses = [BookingStatus.PENDING, BookingStatus.APPROVED];
 
+// Review state
+const reviewDialogVisible = ref(false);
+const selectedBookingId = ref(0);
+const reviewedBookings = ref<Record<string, Review>>({});
+
 async function fetchBookings() {
   loading.value = true;
   try {
@@ -41,10 +49,26 @@ async function fetchBookings() {
       pageNum: filters.pageNum,
       pageSize: filters.pageSize,
     });
+    await fetchReviewsForCompleted();
   } catch {
     // error handled by interceptor
   } finally {
     loading.value = false;
+  }
+}
+
+async function fetchReviewsForCompleted() {
+  if (!page.value) return;
+  const completedBookings = page.value.records.filter((b) => b.status === BookingStatus.COMPLETED);
+  for (const b of completedBookings) {
+    try {
+      const review = await getReviewByBooking(Number(b.id));
+      if (review) {
+        reviewedBookings.value[b.id] = review;
+      }
+    } catch {
+      // silently ignore
+    }
   }
 }
 
@@ -76,6 +100,16 @@ async function handleCancel(booking: { id: string; labName?: string }) {
   } catch {
     // error handled by interceptor
   }
+}
+
+function openReviewDialog(bookingId: string) {
+  selectedBookingId.value = Number(bookingId);
+  reviewDialogVisible.value = true;
+}
+
+function handleReviewSubmitted() {
+  reviewDialogVisible.value = false;
+  fetchBookings();
 }
 
 function handlePageChange(pageNum: number) {
@@ -159,6 +193,23 @@ onMounted(() => {
               <span>{{ booking.createdAt }}</span>
             </div>
           </div>
+
+          <!-- Review section for completed bookings -->
+          <div v-if="booking.status === BookingStatus.COMPLETED" class="review-info">
+            <template v-if="reviewedBookings[booking.id]">
+              <div class="reviewed-badge">
+                <el-rate
+                  :model-value="reviewedBookings[booking.id]!.rating"
+                  disabled
+                  size="small"
+                />
+                <span v-if="reviewedBookings[booking.id]!.comment" class="reviewed-comment">
+                  {{ reviewedBookings[booking.id]!.comment }}
+                </span>
+              </div>
+            </template>
+          </div>
+
           <div class="booking-footer">
             <el-button
               v-if="cancellableStatuses.includes(booking.status as BookingStatus)"
@@ -168,6 +219,14 @@ onMounted(() => {
               @click="handleCancel(booking)"
             >
               取消预约
+            </el-button>
+            <el-button
+              v-if="booking.status === BookingStatus.COMPLETED && !reviewedBookings[booking.id]"
+              type="primary"
+              size="small"
+              @click="openReviewDialog(booking.id)"
+            >
+              评价
             </el-button>
           </div>
         </el-card>
@@ -185,6 +244,16 @@ onMounted(() => {
         @current-change="handlePageChange"
       />
     </div>
+
+    <!-- Review Dialog -->
+    <el-dialog v-model="reviewDialogVisible" title="评价预约" width="480px" destroy-on-close>
+      <ReviewForm
+        v-if="reviewDialogVisible"
+        :booking-id="selectedBookingId"
+        @submitted="handleReviewSubmitted"
+        @cancel="reviewDialogVisible = false"
+      />
+    </el-dialog>
   </div>
 </template>
 
@@ -246,9 +315,30 @@ h1 {
   color: #f56c6c;
 }
 
+.review-info {
+  padding: 8px 0;
+  border-top: 1px solid #ebeef5;
+}
+
+.reviewed-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reviewed-comment {
+  color: #606266;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .booking-footer {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .pagination-wrapper {
