@@ -17,6 +17,8 @@ import {
   Star,
   DataAnalysis,
   Document,
+  User,
+  WarnTriangleFilled,
 } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 
@@ -48,6 +50,8 @@ const menuItems: MenuItem[] = [
   { index: "/dashboard", title: "数据仪表盘", icon: DataAnalysis },
   { index: "/reviews/mine", title: "我的评价", icon: Star },
   { index: "/admin/usage-records", title: "使用记录", icon: Document, roles: ["TEACHER", "ADMIN"] },
+  { index: "/admin/students", title: "学生信息", icon: User, roles: ["ADMIN"] },
+  { index: "/admin/repair-logs", title: "报修记录", icon: WarnTriangleFilled, roles: ["ADMIN"] },
 ];
 
 const visibleMenuItems = computed(() =>

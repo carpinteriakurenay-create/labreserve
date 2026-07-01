@@ -22,6 +22,8 @@ import com.labreserve.mapper.LabHoursMapper;
 import com.labreserve.mapper.LabMapper;
 import com.labreserve.mapper.UserMapper;
 import com.labreserve.util.TimeConflictResolver;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,15 +45,17 @@ public class BookingService {
     private final LabHoursMapper labHoursMapper;
     private final CourseMapper courseMapper;
     private final UserMapper userMapper;
+    private final RedissonClient redissonClient;
 
     public BookingService(BookingMapper bookingMapper, LabMapper labMapper,
                           LabHoursMapper labHoursMapper, CourseMapper courseMapper,
-                          UserMapper userMapper) {
+                          UserMapper userMapper, RedissonClient redissonClient) {
         this.bookingMapper = bookingMapper;
         this.labMapper = labMapper;
         this.labHoursMapper = labHoursMapper;
         this.courseMapper = courseMapper;
         this.userMapper = userMapper;
+        this.redissonClient = redissonClient;
     }
 
     @Transactional
@@ -224,68 +229,84 @@ public class BookingService {
 
     @Transactional
     public BookingVO approveBooking(Long id, boolean approved, String rejectReason, Long approverId) {
-        Booking booking = bookingMapper.selectById(id);
-        if (booking == null) {
-            throw new BusinessException("NOT_FOUND", "预约不存在");
+        String lockKey = "booking:lock:" + id;
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("LOCK_FAILED", "系统繁忙，请稍后重试");
         }
-        if (booking.getStatus() != BookingStatus.PENDING) {
-            throw new BusinessException("ALREADY_PROCESSED", "该预约已被处理");
+        if (!locked) {
+            throw new BusinessException("LOCK_FAILED", "该预约正在被其他管理员处理，请稍后重试");
         }
-
-        LambdaUpdateWrapper<Booking> wrapper = new LambdaUpdateWrapper<>();
-        wrapper.eq(Booking::getId, id);
-
-        if (approved) {
-            Lab lab = labMapper.selectById(booking.getLabId());
-            List<LabHours> openHours = labHoursMapper.selectList(
-                    new LambdaQueryWrapper<LabHours>().eq(LabHours::getLabId, booking.getLabId()));
-
-            List<Booking> conflictingBookings = bookingMapper.selectList(
-                    new LambdaQueryWrapper<Booking>()
-                            .eq(Booking::getLabId, booking.getLabId())
-                            .eq(Booking::getDate, booking.getDate())
-                            .in(Booking::getStatus, BookingStatus.PENDING, BookingStatus.APPROVED)
-                            .ne(Booking::getId, id));
-
-            List<Course> courses = courseMapper.selectList(
-                    new LambdaQueryWrapper<Course>()
-                            .eq(Course::getLabId, booking.getLabId())
-                            .le(Course::getStartDate, booking.getDate())
-                            .ge(Course::getEndDate, booking.getDate()));
-
-            BookingCreateRequest recheckRequest = new BookingCreateRequest();
-            recheckRequest.setLabId(booking.getLabId());
-            recheckRequest.setDate(booking.getDate().toString());
-            recheckRequest.setStartTime(booking.getStartTime());
-            recheckRequest.setEndTime(booking.getEndTime());
-
-            List<String> conflicts = TimeConflictResolver.checkConflicts(
-                    recheckRequest, lab, openHours, conflictingBookings, courses);
-
-            if (!conflicts.isEmpty()) {
-                throw new BusinessException(conflicts.get(0),
-                        conflicts.get(0).equals("TIME_CONFLICT") ? "该时段已被占用" : "审批失败");
+        try {
+            Booking booking = bookingMapper.selectById(id);
+            if (booking == null) {
+                throw new BusinessException("NOT_FOUND", "预约不存在");
+            }
+            if (booking.getStatus() != BookingStatus.PENDING) {
+                throw new BusinessException("ALREADY_PROCESSED", "该预约已被处理");
             }
 
-            wrapper.set(Booking::getStatus, BookingStatus.APPROVED);
-            wrapper.set(Booking::getApproverId, approverId);
-            wrapper.set(Booking::getApprovedAt, LocalDateTime.now());
-        } else {
-            if (rejectReason == null || rejectReason.isBlank()) {
-                throw new BusinessException("REJECT_REASON_REQUIRED", "拒绝时必须填写原因");
+            LambdaUpdateWrapper<Booking> wrapper = new LambdaUpdateWrapper<>();
+            wrapper.eq(Booking::getId, id);
+
+            if (approved) {
+                Lab lab = labMapper.selectById(booking.getLabId());
+                List<LabHours> openHours = labHoursMapper.selectList(
+                        new LambdaQueryWrapper<LabHours>().eq(LabHours::getLabId, booking.getLabId()));
+
+                List<Booking> conflictingBookings = bookingMapper.selectList(
+                        new LambdaQueryWrapper<Booking>()
+                                .eq(Booking::getLabId, booking.getLabId())
+                                .eq(Booking::getDate, booking.getDate())
+                                .in(Booking::getStatus, BookingStatus.PENDING, BookingStatus.APPROVED)
+                                .ne(Booking::getId, id));
+
+                List<Course> courses = courseMapper.selectList(
+                        new LambdaQueryWrapper<Course>()
+                                .eq(Course::getLabId, booking.getLabId())
+                                .le(Course::getStartDate, booking.getDate())
+                                .ge(Course::getEndDate, booking.getDate()));
+
+                BookingCreateRequest recheckRequest = new BookingCreateRequest();
+                recheckRequest.setLabId(booking.getLabId());
+                recheckRequest.setDate(booking.getDate().toString());
+                recheckRequest.setStartTime(booking.getStartTime());
+                recheckRequest.setEndTime(booking.getEndTime());
+
+                List<String> conflicts = TimeConflictResolver.checkConflicts(
+                        recheckRequest, lab, openHours, conflictingBookings, courses);
+
+                if (!conflicts.isEmpty()) {
+                    throw new BusinessException(conflicts.get(0),
+                            conflicts.get(0).equals("TIME_CONFLICT") ? "该时段已被占用" : "审批失败");
+                }
+
+                wrapper.set(Booking::getStatus, BookingStatus.APPROVED);
+                wrapper.set(Booking::getApproverId, approverId);
+                wrapper.set(Booking::getApprovedAt, LocalDateTime.now());
+            } else {
+                if (rejectReason == null || rejectReason.isBlank()) {
+                    throw new BusinessException("REJECT_REASON_REQUIRED", "拒绝时必须填写原因");
+                }
+                wrapper.set(Booking::getStatus, BookingStatus.REJECTED);
+                wrapper.set(Booking::getRejectReason, rejectReason);
+                wrapper.set(Booking::getApproverId, approverId);
+                wrapper.set(Booking::getApprovedAt, LocalDateTime.now());
             }
-            wrapper.set(Booking::getStatus, BookingStatus.REJECTED);
-            wrapper.set(Booking::getRejectReason, rejectReason);
-            wrapper.set(Booking::getApproverId, approverId);
-            wrapper.set(Booking::getApprovedAt, LocalDateTime.now());
+
+            bookingMapper.update(wrapper);
+
+            Booking updated = bookingMapper.selectById(id);
+            BookingVO vo = toBookingVO(updated);
+            populateJoinedFields(Collections.singletonList(vo));
+            return vo;
+        } finally {
+            lock.unlock();
         }
-
-        bookingMapper.update(wrapper);
-
-        Booking updated = bookingMapper.selectById(id);
-        BookingVO vo = toBookingVO(updated);
-        populateJoinedFields(Collections.singletonList(vo));
-        return vo;
     }
 
     @Transactional

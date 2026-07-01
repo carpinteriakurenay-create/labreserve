@@ -15,6 +15,8 @@ import com.labreserve.exception.BusinessException;
 import com.labreserve.mapper.BorrowMapper;
 import com.labreserve.mapper.EquipmentMapper;
 import com.labreserve.mapper.UserMapper;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +25,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -31,12 +34,14 @@ public class BorrowService {
     private final BorrowMapper borrowMapper;
     private final EquipmentMapper equipmentMapper;
     private final UserMapper userMapper;
+    private final RedissonClient redissonClient;
 
     public BorrowService(BorrowMapper borrowMapper, EquipmentMapper equipmentMapper,
-                         UserMapper userMapper) {
+                         UserMapper userMapper, RedissonClient redissonClient) {
         this.borrowMapper = borrowMapper;
         this.equipmentMapper = equipmentMapper;
         this.userMapper = userMapper;
+        this.redissonClient = redissonClient;
     }
 
     @Transactional
@@ -121,40 +126,56 @@ public class BorrowService {
 
     @Transactional
     public BorrowVO approveBorrow(Long id, boolean approved, String rejectReason, Long approverId) {
-        Borrow borrow = borrowMapper.selectById(id);
-        if (borrow == null) {
-            throw new BusinessException("NOT_FOUND", "借用记录不存在");
+        String lockKey = "borrow:lock:" + id;
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException("LOCK_FAILED", "系统繁忙，请稍后重试");
         }
-        if (borrow.getStatus() != BorrowStatus.PENDING) {
-            throw new BusinessException("ALREADY_PROCESSED", "该借用申请已被处理");
+        if (!locked) {
+            throw new BusinessException("LOCK_FAILED", "该借用申请正在被其他管理员处理，请稍后重试");
         }
-
-        LambdaUpdateWrapper<Borrow> wrapper = new LambdaUpdateWrapper<>();
-        wrapper.eq(Borrow::getId, id);
-
-        if (approved) {
-            wrapper.set(Borrow::getStatus, BorrowStatus.BORROWING);
-            wrapper.set(Borrow::getApproverId, approverId);
-
-            LambdaUpdateWrapper<Equipment> equipmentWrapper = new LambdaUpdateWrapper<>();
-            equipmentWrapper.eq(Equipment::getId, borrow.getEquipmentId())
-                    .set(Equipment::getStatus, EquipmentStatus.BORROWED);
-            equipmentMapper.update(equipmentWrapper);
-        } else {
-            if (rejectReason == null || rejectReason.isBlank()) {
-                throw new BusinessException("REJECT_REASON_REQUIRED", "拒绝时必须填写原因");
+        try {
+            Borrow borrow = borrowMapper.selectById(id);
+            if (borrow == null) {
+                throw new BusinessException("NOT_FOUND", "借用记录不存在");
             }
-            wrapper.set(Borrow::getStatus, BorrowStatus.REJECTED);
-            wrapper.set(Borrow::getRejectReason, rejectReason);
-            wrapper.set(Borrow::getApproverId, approverId);
+            if (borrow.getStatus() != BorrowStatus.PENDING) {
+                throw new BusinessException("ALREADY_PROCESSED", "该借用申请已被处理");
+            }
+
+            LambdaUpdateWrapper<Borrow> wrapper = new LambdaUpdateWrapper<>();
+            wrapper.eq(Borrow::getId, id);
+
+            if (approved) {
+                wrapper.set(Borrow::getStatus, BorrowStatus.BORROWING);
+                wrapper.set(Borrow::getApproverId, approverId);
+
+                LambdaUpdateWrapper<Equipment> equipmentWrapper = new LambdaUpdateWrapper<>();
+                equipmentWrapper.eq(Equipment::getId, borrow.getEquipmentId())
+                        .set(Equipment::getStatus, EquipmentStatus.BORROWED);
+                equipmentMapper.update(equipmentWrapper);
+            } else {
+                if (rejectReason == null || rejectReason.isBlank()) {
+                    throw new BusinessException("REJECT_REASON_REQUIRED", "拒绝时必须填写原因");
+                }
+                wrapper.set(Borrow::getStatus, BorrowStatus.REJECTED);
+                wrapper.set(Borrow::getRejectReason, rejectReason);
+                wrapper.set(Borrow::getApproverId, approverId);
+            }
+
+            borrowMapper.update(wrapper);
+
+            Borrow updated = borrowMapper.selectById(id);
+            BorrowVO vo = toBorrowVO(updated);
+            populateJoinedFields(Collections.singletonList(vo));
+            return vo;
+        } finally {
+            lock.unlock();
         }
-
-        borrowMapper.update(wrapper);
-
-        Borrow updated = borrowMapper.selectById(id);
-        BorrowVO vo = toBorrowVO(updated);
-        populateJoinedFields(Collections.singletonList(vo));
-        return vo;
     }
 
     @Transactional

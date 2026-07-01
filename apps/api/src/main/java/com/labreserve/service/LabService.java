@@ -17,6 +17,8 @@ import com.labreserve.exception.BusinessException;
 import com.labreserve.mapper.LabHoursMapper;
 import com.labreserve.mapper.LabMapper;
 import com.labreserve.mapper.UserMapper;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,6 +58,7 @@ public class LabService {
         return voPage;
     }
 
+    @Cacheable(value = "lab", key = "#id")
     public LabVO getLabById(Long id) {
         Lab lab = labMapper.selectById(id);
         if (lab == null) {
@@ -67,6 +70,7 @@ public class LabService {
     }
 
     @Transactional
+    @CacheEvict(value = "lab", allEntries = true)
     public LabVO createLab(LabCreateRequest request) {
         Long count = labMapper.selectCount(
                 new LambdaQueryWrapper<Lab>().eq(Lab::getName, request.getName())
@@ -90,6 +94,7 @@ public class LabService {
     }
 
     @Transactional
+    @CacheEvict(value = "lab", key = "#id")
     public LabVO updateLab(Long id, LabUpdateRequest request) {
         Lab lab = labMapper.selectById(id);
         if (lab == null) {
@@ -139,6 +144,7 @@ public class LabService {
     }
 
     @Transactional
+    @CacheEvict(value = "lab", key = "#id")
     public void deleteLab(Long id) {
         Lab lab = labMapper.selectById(id);
         if (lab == null) {
@@ -148,6 +154,7 @@ public class LabService {
     }
 
     @Transactional
+    @CacheEvict(value = "lab", key = "#id")
     public void toggleStatus(Long id) {
         Lab lab = labMapper.selectById(id);
         if (lab == null) {
@@ -163,6 +170,7 @@ public class LabService {
         labMapper.update(wrapper);
     }
 
+    @Cacheable(value = "labHours", key = "#labId")
     public List<LabHoursVO> getLabHours(Long labId) {
         Lab lab = labMapper.selectById(labId);
         if (lab == null) {
@@ -178,6 +186,7 @@ public class LabService {
     }
 
     @Transactional
+    @CacheEvict(value = "labHours", key = "#labId")
     public void batchReplaceLabHours(Long labId, List<LabHoursBatchRequest.LabHoursItem> items) {
         Lab lab = labMapper.selectById(labId);
         if (lab == null) {

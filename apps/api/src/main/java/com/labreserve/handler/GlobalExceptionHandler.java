@@ -20,7 +20,8 @@ public class GlobalExceptionHandler {
         HttpStatus status = switch (e.getCode()) {
             case "NOT_FOUND" -> HttpStatus.NOT_FOUND;
             case "USERNAME_EXISTS", "NAME_EXISTS", "SERIAL_NUMBER_EXISTS", "TIME_CONFLICT",
-                 "ALREADY_REVIEWED", "EQUIPMENT_UNAVAILABLE", "ALREADY_PROCESSED" -> HttpStatus.CONFLICT;
+                 "ALREADY_REVIEWED", "EQUIPMENT_UNAVAILABLE", "ALREADY_PROCESSED",
+                 "LOCK_FAILED" -> HttpStatus.CONFLICT;
             case "INVALID_CREDENTIALS" -> HttpStatus.UNAUTHORIZED;
             case "ACCOUNT_DISABLED", "FORBIDDEN" -> HttpStatus.FORBIDDEN;
             case "WRONG_PASSWORD", "LAB_CLOSED", "OUTSIDE_OPEN_HOURS",

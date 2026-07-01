@@ -17,6 +17,7 @@ import com.labreserve.mapper.BorrowMapper;
 import com.labreserve.mapper.EquipmentMapper;
 import com.labreserve.mapper.LabMapper;
 import com.labreserve.mapper.UserMapper;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -49,6 +50,7 @@ public class DashboardService {
         this.userMapper = userMapper;
     }
 
+    @Cacheable(value = "kpi", key = "#userId + ':' + #role")
     public DashboardKpiVO getKpi(Long userId, String role) {
         LocalDate today = LocalDate.now();
         boolean isStudent = "STUDENT".equals(role);

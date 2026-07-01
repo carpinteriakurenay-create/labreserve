@@ -11,6 +11,8 @@ import com.labreserve.entity.User;
 import com.labreserve.enums.UserRole;
 import com.labreserve.exception.BusinessException;
 import com.labreserve.mapper.UserMapper;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +43,7 @@ public class UserService {
         return result.convert(this::toUserInfo);
     }
 
+    @Cacheable(value = "user", key = "#id")
     public UserInfo getUserById(Long id) {
         User user = userMapper.selectById(id);
         if (user == null) {
@@ -50,6 +53,7 @@ public class UserService {
     }
 
     @Transactional
+    @CacheEvict(value = "user", allEntries = true)
     public UserInfo createUser(UserCreateRequest request) {
         Long count = userMapper.selectCount(
                 new LambdaQueryWrapper<User>().eq(User::getUsername, request.getUsername())
@@ -72,6 +76,7 @@ public class UserService {
     }
 
     @Transactional
+    @CacheEvict(value = "user", key = "#id")
     public UserInfo updateUser(Long id, UserUpdateRequest request) {
         User user = userMapper.selectById(id);
         if (user == null) {
@@ -104,6 +109,7 @@ public class UserService {
     }
 
     @Transactional
+    @CacheEvict(value = "user", key = "#id")
     public void deleteUser(Long id) {
         User user = userMapper.selectById(id);
         if (user == null) {
@@ -113,6 +119,7 @@ public class UserService {
     }
 
     @Transactional
+    @CacheEvict(value = "user", key = "#id")
     public void toggleEnabled(Long id) {
         User user = userMapper.selectById(id);
         if (user == null) {

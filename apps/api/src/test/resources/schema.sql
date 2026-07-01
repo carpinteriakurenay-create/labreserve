@@ -1,0 +1,190 @@
+DROP TABLE IF EXISTS reviews;
+DROP TABLE IF EXISTS repair_logs;
+DROP TABLE IF EXISTS students;
+DROP TABLE IF EXISTS messages;
+DROP TABLE IF EXISTS borrows;
+DROP TABLE IF EXISTS courses;
+DROP TABLE IF EXISTS notices;
+DROP TABLE IF EXISTS bookings;
+DROP TABLE IF EXISTS equipment;
+DROP TABLE IF EXISTS lab_hours;
+DROP TABLE IF EXISTS lab_categories;
+DROP TABLE IF EXISTS labs;
+DROP TABLE IF EXISTS users;
+
+CREATE TABLE users (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    real_name VARCHAR(50) NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    email VARCHAR(100),
+    phone VARCHAR(20),
+    role VARCHAR(20) NOT NULL DEFAULT 'STUDENT',
+    avatar VARCHAR(255),
+    enabled INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE labs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    location VARCHAR(200),
+    capacity INT,
+    description VARCHAR(500),
+    image_url VARCHAR(255),
+    equipment_num INT DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE',
+    manager_id BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE lab_categories (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    description VARCHAR(200),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE lab_hours (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    lab_id BIGINT NOT NULL,
+    day_of_week INT NOT NULL,
+    open_time VARCHAR(5) NOT NULL,
+    close_time VARCHAR(5) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE bookings (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    lab_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    date DATE NOT NULL,
+    start_time VARCHAR(5) NOT NULL,
+    end_time VARCHAR(5) NOT NULL,
+    purpose VARCHAR(500),
+    person_count INT DEFAULT 1,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    reject_reason VARCHAR(500),
+    approver_id BIGINT,
+    approved_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE equipment (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    lab_id BIGINT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    model VARCHAR(100),
+    serial_number VARCHAR(100),
+    description VARCHAR(500),
+    status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE borrows (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    equipment_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    borrow_date DATE NOT NULL,
+    expected_return DATE NOT NULL,
+    actual_return DATE,
+    purpose VARCHAR(500),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    reject_reason VARCHAR(500),
+    approver_id BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE courses (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    lab_id BIGINT NOT NULL,
+    teacher_id BIGINT NOT NULL,
+    semester VARCHAR(20) NOT NULL,
+    day_of_week INT NOT NULL,
+    start_time VARCHAR(5) NOT NULL,
+    end_time VARCHAR(5) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    class_name VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE notices (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    type VARCHAR(20) NOT NULL DEFAULT 'GENERAL',
+    priority VARCHAR(20) NOT NULL DEFAULT 'NORMAL',
+    publisher_id BIGINT NOT NULL,
+    lab_id BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE reviews (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    booking_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    lab_id BIGINT NOT NULL,
+    rating INT NOT NULL,
+    comment VARCHAR(1000),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE repair_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    equipment_id BIGINT NOT NULL,
+    reporter_id BIGINT NOT NULL,
+    description VARCHAR(500) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE students (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    lab_id BIGINT,
+    name VARCHAR(50) NOT NULL,
+    gender VARCHAR(10),
+    age INT,
+    address VARCHAR(200),
+    creator_id BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE messages (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    sender_id BIGINT NOT NULL,
+    receiver_id BIGINT NOT NULL,
+    title VARCHAR(200),
+    content TEXT,
+    is_read INT DEFAULT 0,
+    read_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
