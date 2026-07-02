@@ -9,7 +9,7 @@
 | 后端测试 (293 tests) | ✅ BUILD SUCCESS |
 | 前端测试 (15 tests) | ✅ all passed |
 | 前端构建 | ✅ built in 21s |
-| 变更文件 | 61 (45 modified, 16 new) |
+| 变更文件 | 59 (39 modified, 20 new) |
 | 安全审计 | ✅ 10/10 修复完成 |
 | 性能审计 | ✅ 8/8 修复完成 |
 
