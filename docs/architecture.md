@@ -652,3 +652,100 @@ flowchart LR
 | jjwt         | 0.12+    | JWT 生成与解析 (待引入)            |
 | Redisson     | 3.30+    | Redis 分布式锁 (待引入)            |
 | Knife4j      | 4.5+     | Swagger 文档 (待引入)              |
+
+---
+
+## 五、已知技术债和改进方向
+
+> 最后更新：2026-07-02 | 来源：安全审计 + 性能审计 + 开发实践总结
+
+### 5.1 安全加固（P1 — 已部分修复）
+
+| 编号   | 问题                                                            | 状态      | 优先级 |
+| ------ | --------------------------------------------------------------- | --------- | ------ |
+| SEC-01 | JWT 密钥和数据库密码从配置文件迁移到环境变量                    | ✅ 已修复 | —      |
+| SEC-02 | 登录/注册接口添加速率限制                                       | ✅ 已修复 | —      |
+| SEC-03 | 添加安全响应头（X-Content-Type-Options, X-Frame-Options, HSTS） | ✅ 已修复 | —      |
+| SEC-04 | 全局异常兜底（避免内部错误泄露）                                | ✅ 已修复 | —      |
+| SEC-05 | 密码修改后使旧 token 失效（token 版本号机制）                   | ✅ 已修复 | —      |
+| SEC-06 | 注册流程添加验证码/邮箱验证                                     | ⬜ 未开始 | P2     |
+| SEC-07 | 前端 token 从 localStorage 迁移到 httpOnly cookie               | ⬜ 未开始 | P2     |
+| SEC-08 | 客户端 IP 速率限制改用 Redis 计数器（支持多实例部署）           | ⬜ 未开始 | P3     |
+
+### 5.2 性能优化（P1 — 已部分修复）
+
+| 编号    | 问题                                                   | 状态      | 优先级 |
+| ------- | ------------------------------------------------------ | --------- | ------ |
+| PERF-01 | 数据库索引完善（测试 schema 已对齐生产）               | ✅ 已修复 | —      |
+| PERF-02 | Dashboard 聚合下推到 SQL（不用 Java Stream 分组）      | ✅ 已修复 | —      |
+| PERF-03 | CSV 导出添加 LIMIT 10000 防止 OOM                      | ✅ 已修复 | —      |
+| PERF-04 | Vite 代码分割（vendor-vue/element/echarts 独立 chunk） | ✅ 已修复 | —      |
+| PERF-05 | ECharts 按需导入（PieChart / BarChart）                | ✅ 已修复 | —      |
+| PERF-06 | MyBookings N+1 API 调用改为并行                        | ✅ 已修复 | —      |
+| PERF-07 | Element Plus 按需导入（unplugin-vue-components）       | ⬜ 未开始 | P2     |
+| PERF-08 | 参考数据 Pinia 缓存（labs/equipment 跨视图复用）       | ⬜ 未开始 | P2     |
+| PERF-09 | 6 个视图的 `pageSize: 1000` 下拉框改为远程搜索         | ⬜ 未开始 | P3     |
+| PERF-10 | CSV 导出改为流式写入（Cursor），支持真正的大数据集导出 | ⬜ 未开始 | P3     |
+
+### 5.3 架构一致性
+
+| 编号    | 问题                    | 描述                                                                                                                                                                                          | 优先级 |
+| ------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| ARCH-01 | 分页实现不一致          | ADR-004 决定使用游标分页（CursorPageQuery/CursorPageResult），但前端 `bookings.ts` 和 `labs.ts` 实际使用传统 offset 分页（pageNum/pageSize/size/current/pages）。应统一为游标分页或修正 ADR。 | P2     |
+| ARCH-02 | API 接口文档滞后的依赖  | 架构文档附录列出 Knife4j 4.5+ / Swagger 为"待引入"，至今未集成。缺少自动生成的 API 文档增加了前后端沟通成本。                                                                                 | P2     |
+| ARCH-03 | `UserInfo` 类型导入位置 | `api.ts` 中的 `UserInfo` 接口依赖 `UserRole` 枚举，但 import 放在文件末尾。建议将 import 移至文件头部。                                                                                       | P3     |
+| ARCH-04 | 前端缺少统一错误处理层  | 每个 API module 各自处理 `res.data.data` 解包，错误处理分散在 `client.ts` 拦截器和各 view 的 try-catch 中。建议抽象 `useApi` composable 统一处理 loading/error/data 状态。                    | P3     |
+
+### 5.4 运维与可观测性
+
+| 编号   | 问题             | 描述                                                                                                      | 优先级 |
+| ------ | ---------------- | --------------------------------------------------------------------------------------------------------- | ------ |
+| OPS-01 | 无应用级监控     | 未集成 Micrometer / Prometheus metrics。无法观测 API 响应时间分布、JVM 内存/GC、慢查询等指标。            | P1     |
+| OPS-02 | 无分布式追踪     | 未集成 OpenTelemetry / Sleuth。跨服务调用链（Nginx → API → MySQL/Redis）不可追踪。                        | P2     |
+| OPS-03 | 日志格式不统一   | 后端使用默认 Logback 格式（彩色控制台输出），未配置 JSON 格式日志（不利于日志聚合系统如 ELK/Loki 解析）。 | P2     |
+| OPS-04 | 无数据库迁移工具 | 数据库变更依赖手动执行 SQL 或 Docker init 脚本。未使用 Flyway 或 Liquibase 进行版本化管理。               | P2     |
+| OPS-05 | CI 缺少 E2E 测试 | GitHub Actions CI 中只有 lint/typecheck/test/build，没有 Playwright E2E 测试步骤。                        | P2     |
+
+### 5.5 代码质量
+
+| 编号    | 问题                                                | 描述                                                                                                                                                      | 优先级 |
+| ------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| CODE-01 | 后端 Controller 中 `SecurityContextHolder` 重复代码 | 14 个 Controller 中重复出现 `getCurrentUserId()` 方法。应抽取到 `BaseController` 或 `UserContext` 工具类。                                                | P2     |
+| CODE-02 | DTO/VO 转换在 Service 层                            | 各 Service 中的 `toVO()` 方法散落各处，可考虑统一使用 MapStruct 或抽取到专门的 Converter 类。                                                             | P3     |
+| CODE-03 | 前端 20 个 View 文件较大                            | `AdminLabsView.vue`、`AdminCoursesView.vue` 等超过 300 行，包含表单验证逻辑、表格配置、API 调用。建议拆分为 container（逻辑）+ presentational（UI）组件。 | P3     |
+| CODE-04 | 测试覆盖不均衡                                      | 后端 293 个测试覆盖 Controller 和 Service，但缺少 Mapper 层集成测试（SQL 聚合查询的正确性）和 Repository 层测试。前端 E2E 测试未纳入 CI。                 | P3     |
+
+### 5.6 改进优先级路线图
+
+```
+Q3 2026 (P1 — 当前季度)
+├── OPS-01: 集成 Micrometer + Prometheus 监控
+├── OPS-02: 集成 OpenTelemetry 追踪
+└── CODE-01: 抽取 BaseController 消除重复
+
+Q4 2026 (P2)
+├── SEC-06: 注册流程添加验证码
+├── SEC-07: token 迁移到 httpOnly cookie
+├── PERF-07: Element Plus 按需导入
+├── ARCH-01: 统一分页实现
+├── ARCH-02: 集成 Knife4j API 文档
+├── OPS-04: 引入 Flyway 数据库迁移
+└── OPS-05: CI 添加 E2E 测试 step
+
+Q1 2027 (P3)
+├── SEC-08: Redis 分布式速率限制
+├── PERF-09: 下拉框远程搜索
+├── PERF-10: CSV 流式导出
+├── PERF-08: 参考数据 Pinia 缓存
+├── ARCH-03/04: 类型和错误处理重构
+├── CODE-02: DTO 转换统一化
+└── CODE-03/04: 大组件拆分 + 测试补强
+```
+
+### 5.7 经验教训
+
+1. **ADR 与实践保持一致**：ADR-004 游标分页的决策未落实到前端实现，导致文档与现实脱节。后续 ADR 应在代码落地后再标记为"已实施"。
+2. **安全审计提前做**：JWT 密钥硬编码、无速率限制等问题如果在项目初期就解决，可以避免后期返工。建议在每个 milestone 结束时执行安全自查。
+3. **性能基准测试**：缺少性能回归测试。建议在 CI 中增加 API 响应时间的基准断言（如 Dashboard KPI < 100ms），防止性能退化。
+4. **索引策略**：生产 schema 有索引但测试 schema 没有，导致测试环境的行为与生产不一致。schema 管理应统一来源。
+5. **Monorepo 收益未完全发挥**：`packages/shared` 仅用于类型共享。可以进一步共享表单验证规则、API 路径常量、错误码映射等。

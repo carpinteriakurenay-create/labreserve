@@ -14,8 +14,11 @@ import com.labreserve.enums.BookingStatus;
 import com.labreserve.mapper.BookingMapper;
 import com.labreserve.mapper.BorrowMapper;
 import com.labreserve.mapper.EquipmentMapper;
+import com.labreserve.mapper.EquipmentUsageAggRow;
 import com.labreserve.mapper.LabMapper;
+import com.labreserve.mapper.LabUsageAggRow;
 import com.labreserve.mapper.UserMapper;
+import com.labreserve.mapper.UserRankingAggRow;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,7 +26,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 
@@ -48,15 +50,10 @@ class DashboardServiceTest {
 
         @Test
         void shouldReturnKpiForStudent() {
-            Lab lab = new Lab();
-            lab.setId(1L);
-            lab.setName("Lab 1");
-
             when(bookingMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(5L, 2L);
             when(borrowMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(3L);
-            when(labMapper.selectList(isNull())).thenReturn(List.of(lab));
-            when(bookingMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(
-                    List.of(createBooking(1L, 1L)));
+            when(labMapper.selectCount(isNull())).thenReturn(2L);
+            when(bookingMapper.countDistinctLabsByDate(anyString())).thenReturn(1L);
 
             DashboardKpiVO kpi = dashboardService.getKpi(1L, "STUDENT");
 
@@ -64,20 +61,15 @@ class DashboardServiceTest {
             assertEquals(5L, kpi.getTodayBookings());
             assertEquals(3L, kpi.getTodayBorrows());
             assertEquals(2L, kpi.getPendingApprovals());
-            assertTrue(kpi.getLabUsageRate() >= 0.0);
+            assertEquals(0.5, kpi.getLabUsageRate());
         }
 
         @Test
         void shouldReturnKpiForAdmin() {
-            Lab lab = new Lab();
-            lab.setId(1L);
-            lab.setName("Lab 1");
-
             when(bookingMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(10L, 5L);
             when(borrowMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(8L);
-            when(labMapper.selectList(isNull())).thenReturn(List.of(lab, new Lab()));
-            when(bookingMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(
-                    List.of(createBooking(1L, 1L)));
+            when(labMapper.selectCount(isNull())).thenReturn(3L);
+            when(bookingMapper.countDistinctLabsByDate(anyString())).thenReturn(2L);
 
             DashboardKpiVO kpi = dashboardService.getKpi(3L, "ADMIN");
 
@@ -85,25 +77,18 @@ class DashboardServiceTest {
             assertEquals(10L, kpi.getTodayBookings());
             assertEquals(8L, kpi.getTodayBorrows());
             assertEquals(5L, kpi.getPendingApprovals());
+            assertEquals(2.0 / 3.0, kpi.getLabUsageRate());
         }
 
         @Test
         void shouldReturnZeroRateWhenNoLabs() {
             when(bookingMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
             when(borrowMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
-            when(labMapper.selectList(isNull())).thenReturn(Collections.emptyList());
+            when(labMapper.selectCount(isNull())).thenReturn(0L);
 
             DashboardKpiVO kpi = dashboardService.getKpi(1L, "STUDENT");
 
             assertEquals(0.0, kpi.getLabUsageRate());
-        }
-
-        private Booking createBooking(Long id, Long labId) {
-            Booking booking = new Booking();
-            booking.setId(id);
-            booking.setLabId(labId);
-            booking.setStatus(BookingStatus.COMPLETED);
-            return booking;
         }
     }
 
@@ -112,26 +97,18 @@ class DashboardServiceTest {
 
         @Test
         void shouldReturnRankingSortedByBookingCount() {
-            Booking b1 = new Booking();
-            b1.setUserId(1L);
-            b1.setStartTime("08:00");
-            b1.setEndTime("10:00");
-            b1.setStatus(BookingStatus.COMPLETED);
+            UserRankingAggRow r1 = new UserRankingAggRow();
+            r1.setUserId(1L);
+            r1.setBookingCount(2L);
+            r1.setTotalHours(4.0);
 
-            Booking b2 = new Booking();
-            b2.setUserId(2L);
-            b2.setStartTime("08:00");
-            b2.setEndTime("09:00");
-            b2.setStatus(BookingStatus.COMPLETED);
+            UserRankingAggRow r2 = new UserRankingAggRow();
+            r2.setUserId(2L);
+            r2.setBookingCount(1L);
+            r2.setTotalHours(1.0);
 
-            Booking b3 = new Booking();
-            b3.setUserId(1L);
-            b3.setStartTime("14:00");
-            b3.setEndTime("16:00");
-            b3.setStatus(BookingStatus.COMPLETED);
-
-            when(bookingMapper.selectList(any(LambdaQueryWrapper.class)))
-                    .thenReturn(List.of(b1, b2, b3));
+            when(bookingMapper.aggregateUserRanking(anyString(), anyString(), eq(10)))
+                    .thenReturn(List.of(r1, r2));
 
             User u1 = new User();
             u1.setId(1L);
@@ -145,17 +122,17 @@ class DashboardServiceTest {
 
             assertFalse(ranking.isEmpty());
             assertEquals(1L, ranking.get(0).getUserId());
-            assertEquals(2, ranking.get(0).getBookingCount());
+            assertEquals(2L, ranking.get(0).getBookingCount());
         }
 
         @Test
         void shouldRespectLimit() {
-            Booking b = new Booking();
-            b.setUserId(1L);
-            b.setStartTime("08:00");
-            b.setEndTime("09:00");
-            b.setStatus(BookingStatus.COMPLETED);
-            when(bookingMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(b));
+            UserRankingAggRow r = new UserRankingAggRow();
+            r.setUserId(1L);
+            r.setBookingCount(1L);
+            r.setTotalHours(1.0);
+            when(bookingMapper.aggregateUserRanking(anyString(), anyString(), eq(1)))
+                    .thenReturn(List.of(r));
 
             User u = new User();
             u.setId(1L);
@@ -165,6 +142,16 @@ class DashboardServiceTest {
             List<StudentRankingVO> ranking = dashboardService.getStudentRanking(null, null, 1);
 
             assertEquals(1, ranking.size());
+        }
+
+        @Test
+        void shouldReturnEmptyWhenNoData() {
+            when(bookingMapper.aggregateUserRanking(anyString(), anyString(), eq(10)))
+                    .thenReturn(Collections.emptyList());
+
+            List<StudentRankingVO> ranking = dashboardService.getStudentRanking(null, null, 10);
+
+            assertTrue(ranking.isEmpty());
         }
     }
 }

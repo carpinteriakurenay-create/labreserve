@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from "vue";
-import * as echarts from "echarts";
+import * as echarts from "echarts/core";
+import { PieChart } from "echarts/charts";
+import { TitleComponent, TooltipComponent, LegendComponent } from "echarts/components";
+import { CanvasRenderer } from "echarts/renderers";
+
+echarts.use([PieChart, TitleComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
 import { EquipmentStatus, EQUIPMENT_STATUS_LABELS } from "@labreserve/shared";
 import { getEquipments } from "@/api/equipment";
 

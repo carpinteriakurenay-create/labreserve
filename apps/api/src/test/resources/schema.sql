@@ -26,6 +26,10 @@ CREATE TABLE users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE UNIQUE INDEX uk_users_username ON users(username);
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_enabled ON users(enabled);
+CREATE INDEX idx_users_deleted ON users(deleted);
 
 CREATE TABLE labs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -41,6 +45,9 @@ CREATE TABLE labs (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE INDEX idx_labs_status ON labs(status);
+CREATE INDEX idx_labs_name ON labs(name);
+CREATE INDEX idx_labs_deleted ON labs(deleted);
 
 CREATE TABLE lab_categories (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -50,6 +57,8 @@ CREATE TABLE lab_categories (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE UNIQUE INDEX uk_lab_categories_name ON lab_categories(name);
+CREATE INDEX idx_lab_categories_deleted ON lab_categories(deleted);
 
 CREATE TABLE lab_hours (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -61,6 +70,27 @@ CREATE TABLE lab_hours (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE UNIQUE INDEX uk_lab_hours_day_open ON lab_hours(lab_id, day_of_week, open_time);
+CREATE INDEX idx_lab_hours_lab ON lab_hours(lab_id);
+CREATE INDEX idx_lab_hours_deleted ON lab_hours(deleted);
+
+CREATE TABLE equipment (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    lab_id BIGINT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    model VARCHAR(100),
+    serial_number VARCHAR(100) NOT NULL,
+    description VARCHAR(500),
+    status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted INT NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX uk_equipment_serial ON equipment(serial_number);
+CREATE INDEX idx_equipment_lab ON equipment(lab_id);
+CREATE INDEX idx_equipment_status ON equipment(status);
+CREATE INDEX idx_equipment_name ON equipment(name);
+CREATE INDEX idx_equipment_deleted ON equipment(deleted);
 
 CREATE TABLE bookings (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -80,19 +110,11 @@ CREATE TABLE bookings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
-
-CREATE TABLE equipment (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    lab_id BIGINT NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    model VARCHAR(100),
-    serial_number VARCHAR(100),
-    description VARCHAR(500),
-    status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted INT NOT NULL DEFAULT 0
-);
+CREATE INDEX idx_bookings_lab_date ON bookings(lab_id, date);
+CREATE INDEX idx_bookings_user ON bookings(user_id);
+CREATE INDEX idx_bookings_status ON bookings(status);
+CREATE INDEX idx_bookings_approver ON bookings(approver_id);
+CREATE INDEX idx_bookings_deleted ON bookings(deleted);
 
 CREATE TABLE borrows (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -109,6 +131,11 @@ CREATE TABLE borrows (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE INDEX idx_borrows_equipment ON borrows(equipment_id);
+CREATE INDEX idx_borrows_user ON borrows(user_id);
+CREATE INDEX idx_borrows_status ON borrows(status);
+CREATE INDEX idx_borrows_approver ON borrows(approver_id);
+CREATE INDEX idx_borrows_deleted ON borrows(deleted);
 
 CREATE TABLE courses (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -126,6 +153,10 @@ CREATE TABLE courses (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE INDEX idx_courses_lab_day ON courses(lab_id, day_of_week);
+CREATE INDEX idx_courses_teacher ON courses(teacher_id);
+CREATE INDEX idx_courses_semester ON courses(semester);
+CREATE INDEX idx_courses_deleted ON courses(deleted);
 
 CREATE TABLE notices (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -139,6 +170,10 @@ CREATE TABLE notices (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE INDEX idx_notices_type ON notices(type);
+CREATE INDEX idx_notices_priority ON notices(priority);
+CREATE INDEX idx_notices_created ON notices(created_at);
+CREATE INDEX idx_notices_deleted ON notices(deleted);
 
 CREATE TABLE reviews (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -151,6 +186,10 @@ CREATE TABLE reviews (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE UNIQUE INDEX uk_reviews_booking ON reviews(booking_id);
+CREATE INDEX idx_reviews_lab ON reviews(lab_id);
+CREATE INDEX idx_reviews_user ON reviews(user_id);
+CREATE INDEX idx_reviews_deleted ON reviews(deleted);
 
 CREATE TABLE repair_logs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -162,6 +201,9 @@ CREATE TABLE repair_logs (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE INDEX idx_repair_logs_equipment ON repair_logs(equipment_id);
+CREATE INDEX idx_repair_logs_status ON repair_logs(status);
+CREATE INDEX idx_repair_logs_deleted ON repair_logs(deleted);
 
 CREATE TABLE students (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -175,6 +217,9 @@ CREATE TABLE students (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE INDEX idx_students_lab ON students(lab_id);
+CREATE INDEX idx_students_name ON students(name);
+CREATE INDEX idx_students_deleted ON students(deleted);
 
 CREATE TABLE messages (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -188,3 +233,6 @@ CREATE TABLE messages (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted INT NOT NULL DEFAULT 0
 );
+CREATE INDEX idx_messages_receiver_read ON messages(receiver_id, is_read);
+CREATE INDEX idx_messages_sender ON messages(sender_id);
+CREATE INDEX idx_messages_deleted ON messages(deleted);

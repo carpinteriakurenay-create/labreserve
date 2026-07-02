@@ -11,6 +11,11 @@ import com.labreserve.entity.User;
 import com.labreserve.enums.UserRole;
 import com.labreserve.exception.BusinessException;
 import com.labreserve.mapper.UserMapper;
+import org.redisson.api.RBucket;
+import org.redisson.api.RedissonClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
@@ -18,20 +23,27 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+
 @Service
 public class AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
+    private final RedissonClient redissonClient;
 
     public AuthService(UserMapper userMapper, PasswordEncoder passwordEncoder,
-                       JwtUtil jwtUtil, AuthenticationManager authenticationManager) {
+                       JwtUtil jwtUtil, AuthenticationManager authenticationManager,
+                       @Autowired(required = false) RedissonClient redissonClient) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.authenticationManager = authenticationManager;
+        this.redissonClient = redissonClient;
     }
 
     public void register(RegisterRequest request) {
@@ -69,7 +81,8 @@ public class AuthService {
                 new LambdaQueryWrapper<User>().eq(User::getUsername, request.getUsername())
         );
 
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole().name());
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername(),
+                user.getRole().name(), getTokenVersion(user.getId()));
 
         return LoginResponse.builder()
                 .token(token)
@@ -93,6 +106,32 @@ public class AuthService {
         }
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userMapper.updateById(user);
+
+        // Invalidate all existing tokens by incrementing the token version in Redis
+        incrementTokenVersion(userId);
+    }
+
+    private long getTokenVersion(Long userId) {
+        try {
+            RBucket<Long> bucket = redissonClient.getBucket("user:" + userId + ":tokenVersion");
+            Long version = bucket.get();
+            return version != null ? version : 0L;
+        } catch (Exception e) {
+            log.warn("Failed to get token version for user {}: {}", userId, e.getMessage());
+            return 0L;
+        }
+    }
+
+    private void incrementTokenVersion(Long userId) {
+        try {
+            RBucket<Long> bucket = redissonClient.getBucket("user:" + userId + ":tokenVersion");
+            long current = bucket.get() != null ? bucket.get() : 0L;
+            // Store new version with TTL matching JWT expiration + buffer
+            Duration ttl = Duration.ofMillis(jwtUtil.getExpiration()).plusMinutes(5);
+            bucket.set(current + 1, ttl);
+        } catch (Exception e) {
+            log.warn("Failed to increment token version for user {}: {}", userId, e.getMessage());
+        }
     }
 
     private UserInfo toUserInfo(User user) {

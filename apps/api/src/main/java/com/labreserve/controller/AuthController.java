@@ -10,6 +10,7 @@ import com.labreserve.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -42,6 +43,7 @@ public class AuthController {
     }
 
     @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<UserInfo> me() {
         Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         UserInfo userInfo = authService.getCurrentUser(userId);
@@ -49,6 +51,7 @@ public class AuthController {
     }
 
     @PutMapping("/change-password")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         authService.changePassword(userId, request);

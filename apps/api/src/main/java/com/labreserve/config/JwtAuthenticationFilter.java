@@ -4,6 +4,10 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.redisson.api.RBucket;
+import org.redisson.api.RedissonClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -16,10 +20,16 @@ import java.util.List;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private final JwtUtil jwtUtil;
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
-    public JwtAuthenticationFilter(JwtUtil jwtUtil) {
+    private final JwtUtil jwtUtil;
+    private final RedissonClient redissonClient;
+
+    public JwtAuthenticationFilter(JwtUtil jwtUtil,
+                                    @org.springframework.beans.factory.annotation.Autowired(required = false)
+                                    RedissonClient redissonClient) {
         this.jwtUtil = jwtUtil;
+        this.redissonClient = redissonClient;
     }
 
     @Override
@@ -37,6 +47,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (jwtUtil.isTokenValid(token)) {
             Long userId = jwtUtil.extractUserId(token);
+
+            // Check token version: if user has changed password since this token
+            // was issued, reject the token
+            long tokenVersion = jwtUtil.extractTokenVersion(token);
+            if (!isTokenVersionValid(userId, tokenVersion)) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
             String username = jwtUtil.extractUsername(token);
             String role = jwtUtil.extractRole(token);
 
@@ -51,5 +70,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isTokenVersionValid(Long userId, long tokenVersion) {
+        if (tokenVersion == 0L || redissonClient == null) {
+            return true;
+        }
+        try {
+            RBucket<Long> bucket = redissonClient.getBucket("user:" + userId + ":tokenVersion");
+            Long storedVersion = bucket.get();
+            if (storedVersion == null) return true; // Redis unavailable — allow through
+            return tokenVersion >= storedVersion;
+        } catch (Exception e) {
+            // Redis unavailable — allow through gracefully
+            log.warn("Failed to check token version for user {}: {}", userId, e.getMessage());
+            return true;
+        }
     }
 }

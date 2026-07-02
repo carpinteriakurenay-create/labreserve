@@ -60,16 +60,17 @@ async function fetchBookings() {
 async function fetchReviewsForCompleted() {
   if (!page.value) return;
   const completedBookings = page.value.records.filter((b) => b.status === BookingStatus.COMPLETED);
-  for (const b of completedBookings) {
-    try {
-      const review = await getReviewByBooking(Number(b.id));
-      if (review) {
-        reviewedBookings.value[b.id] = review;
-      }
-    } catch {
-      // silently ignore
+  if (completedBookings.length === 0) return;
+
+  // Parallel fetch instead of sequential N+1
+  const results = await Promise.allSettled(
+    completedBookings.map((b) => getReviewByBooking(Number(b.id))),
+  );
+  results.forEach((result, i) => {
+    if (result.status === "fulfilled" && result.value) {
+      reviewedBookings.value[completedBookings[i]!.id] = result.value;
     }
-  }
+  });
 }
 
 function handleSearch() {
