@@ -52,8 +52,8 @@ LabReserve 高校实验室预约管理系统的首次正式发布，包含完整
 ### 📊 变更统计
 
 ```
-61 files changed, 6979 insertions(+), 221 deletions(-)
-  45 modified, 16 new files
+61 files changed, 7009 insertions(+), 221 deletions(-)
+  39 modified, 20 new files
   后端: 27 files (安全/性能/测试/限流/聚合查询)
   前端: 10 files (bundle/401修复/TSDoc/E2E/config)
   Shared: 8 files (TSDoc注释)
