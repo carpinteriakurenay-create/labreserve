@@ -7,7 +7,7 @@
 | 后端测试 (293 tests) | ✅ BUILD SUCCESS         |
 | 前端测试 (15 tests)  | ✅ all passed            |
 | 前端构建             | ✅ built in 21s          |
-| 变更文件             | 59 (39 modified, 20 new) |
+| 变更文件             | 61 (45 modified, 16 new) |
 | 安全审计             | ✅ 10/10 修复完成        |
 | 性能审计             | ✅ 8/8 修复完成          |
 
@@ -42,7 +42,7 @@ LabReserve 高校实验室预约管理系统的首次正式发布，包含完整
 - MyBookings N+1 → Promise.allSettled 并行
 - Dashboard 三端点 @Cacheable
 
-**文档** (7 项新增)：
+**文档** (8 项新增)：
 
 - README.md、CHANGELOG.md、docs/deployment.md
 - docs/security-audit.md、docs/security-plan.md
@@ -52,10 +52,12 @@ LabReserve 高校实验室预约管理系统的首次正式发布，包含完整
 ### 📊 变更统计
 
 ```
-59 files changed, 3143 insertions(+), 3346 deletions(-)
-  39 modified, 20 new files
+61 files changed, 6979 insertions(+), 221 deletions(-)
+  45 modified, 16 new files
   后端: 27 files (安全/性能/测试/限流/聚合查询)
-  前端: 7 files (bundle/401修复/TSDoc/E2E)
-  Docker/Scripts: 1 file
-  Docs: 7 files
+  前端: 10 files (bundle/401修复/TSDoc/E2E/config)
+  Shared: 8 files (TSDoc注释)
+  Docker/Config: 2 files
+  Docs: 10 files
+  Root: 4 files (README, CHANGELOG, pnpm-lock)
 ```
