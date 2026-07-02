@@ -13,11 +13,6 @@ spring:
       mode: always
   cache:
     type: none
-  autoconfigure:
-    exclude:
-      - org.redisson.spring.boot.autoconfigure.RedissonAutoConfiguration
-      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
-      - org.springframework.boot.autoconfigure.cache.RedisCacheAutoConfiguration
 
 mybatis-plus:
   configuration:
@@ -31,5 +26,5 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 jwt:
-  secret: test-secret-key-at-least-32-bytes-long-for-jjwt
+  secret: ${JWT_SECRET:test-secret-key-at-least-32-bytes-long-for-jjwt}
   expiration: 3600000

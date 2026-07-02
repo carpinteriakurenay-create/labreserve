@@ -82,6 +82,7 @@ public class UsageRecordService {
         }
 
         wrapper.orderByDesc(Booking::getCompletedAt);
+        wrapper.last("LIMIT 10000");
 
         List<Booking> bookings = bookingMapper.selectList(wrapper);
         Map<Long, String> labIdToName = loadLabNames(bookings);

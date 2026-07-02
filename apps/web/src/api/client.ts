@@ -25,6 +25,12 @@ client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
+let routerInstance: unknown = null;
+
+export function setRouter(router: unknown) {
+  routerInstance = router;
+}
+
 client.interceptors.response.use(
   (response: AxiosResponse) => {
     activeRequests--;
@@ -46,7 +52,15 @@ client.interceptors.response.use(
       if (!silent) {
         ElMessage.error("登录已过期，请重新登录");
       }
-      window.location.href = "/login";
+      // Use router.push instead of window.location.href to preserve SPA state
+      if (
+        routerInstance &&
+        typeof (routerInstance as Record<string, unknown>).push === "function"
+      ) {
+        ((routerInstance as Record<string, unknown>).push as (path: string) => unknown)("/login");
+      } else {
+        window.location.href = "/login";
+      }
     } else if (!silent) {
       if (error.response?.data?.message) {
         ElMessage.error(error.response.data.message);

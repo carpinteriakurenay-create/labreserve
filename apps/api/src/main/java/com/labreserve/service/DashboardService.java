@@ -11,24 +11,23 @@ import com.labreserve.entity.Equipment;
 import com.labreserve.entity.Lab;
 import com.labreserve.entity.User;
 import com.labreserve.enums.BookingStatus;
-import com.labreserve.enums.BorrowStatus;
 import com.labreserve.mapper.BookingMapper;
 import com.labreserve.mapper.BorrowMapper;
 import com.labreserve.mapper.EquipmentMapper;
+import com.labreserve.mapper.EquipmentUsageAggRow;
 import com.labreserve.mapper.LabMapper;
+import com.labreserve.mapper.LabUsageAggRow;
 import com.labreserve.mapper.UserMapper;
+import com.labreserve.mapper.UserRankingAggRow;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -74,16 +73,12 @@ public class DashboardService {
         long todayBorrows = borrowMapper.selectCount(todayBorrowsWrapper);
         long pendingApprovals = bookingMapper.selectCount(pendingWrapper);
 
-        // Lab usage rate: count labs with at least one COMPLETED booking today / total labs
+        // Use COUNT(DISTINCT lab_id) from SQL instead of loading all records
+        long totalLabs = labMapper.selectCount(null);
         double labUsageRate = 0.0;
-        List<Lab> allLabs = labMapper.selectList(null);
-        if (!allLabs.isEmpty()) {
-            List<Booking> todayCompletedBookings = bookingMapper.selectList(todayCompletedWrapper);
-            long labsWithBookings = todayCompletedBookings.stream()
-                    .map(Booking::getLabId)
-                    .distinct()
-                    .count();
-            labUsageRate = (double) labsWithBookings / allLabs.size();
+        if (totalLabs > 0) {
+            long labsWithBookings = bookingMapper.countDistinctLabsByDate(today.toString());
+            labUsageRate = (double) labsWithBookings / totalLabs;
         }
 
         return DashboardKpiVO.builder()
@@ -94,135 +89,146 @@ public class DashboardService {
                 .build();
     }
 
+    @Cacheable(value = "labUsage", key = "#userId + ':' + #role + ':' + #dateFrom + ':' + #dateTo")
     public List<LabUsageStatVO> getLabUsage(Long userId, String role, String dateFrom, String dateTo) {
         boolean isStudent = "STUDENT".equals(role);
         LocalDate from = dateFrom != null ? LocalDate.parse(dateFrom) : LocalDate.now().minusDays(30);
         LocalDate to = dateTo != null ? LocalDate.parse(dateTo) : LocalDate.now();
 
+        // For student: individual user bookings are small — use paginated approach
+        if (isStudent) {
+            return getLabUsageForStudent(userId, from, to);
+        }
+
+        // For teacher/admin: use SQL aggregation to avoid loading all rows
+        List<LabUsageAggRow> rows = bookingMapper.aggregateLabUsage(from.toString(), to.toString());
+        if (rows.isEmpty()) return Collections.emptyList();
+
+        Set<Long> labIds = rows.stream().map(LabUsageAggRow::getLabId).collect(Collectors.toSet());
+        Map<Long, String> labIdToName = labMapper.selectBatchIds(labIds).stream()
+                .collect(Collectors.toMap(Lab::getId, Lab::getName));
+
+        return rows.stream().map(r -> LabUsageStatVO.builder()
+                .labId(r.getLabId())
+                .labName(labIdToName.getOrDefault(r.getLabId(), ""))
+                .bookingCount(r.getBookingCount() != null ? r.getBookingCount() : 0L)
+                .usageHours(r.getUsageHours() != null ? r.getUsageHours() : 0.0)
+                .utilizationRate(0.0)
+                .build()).collect(Collectors.toList());
+    }
+
+    private List<LabUsageStatVO> getLabUsageForStudent(Long userId, LocalDate from, LocalDate to) {
+        // Student data is tiny — paginated select is fine
         LambdaQueryWrapper<Booking> wrapper = new LambdaQueryWrapper<Booking>()
+                .eq(Booking::getUserId, userId)
                 .eq(Booking::getStatus, BookingStatus.COMPLETED)
                 .ge(Booking::getDate, from)
                 .le(Booking::getDate, to);
-        if (isStudent) {
-            wrapper.eq(Booking::getUserId, userId);
-        }
-
         List<Booking> bookings = bookingMapper.selectList(wrapper);
         Map<Long, List<Booking>> byLab = bookings.stream()
                 .collect(Collectors.groupingBy(Booking::getLabId));
 
-        List<Lab> labs = labMapper.selectList(null);
-        Map<Long, String> labIdToName = labs.stream()
+        Set<Long> labIds = byLab.keySet();
+        Map<Long, String> labIdToName = labIds.isEmpty() ? Collections.emptyMap()
+                : labMapper.selectBatchIds(labIds).stream()
                 .collect(Collectors.toMap(Lab::getId, Lab::getName));
 
         List<LabUsageStatVO> stats = new ArrayList<>();
         for (Map.Entry<Long, List<Booking>> entry : byLab.entrySet()) {
-            Long labId = entry.getKey();
             List<Booking> labBookings = entry.getValue();
-            long bookingCount = labBookings.size();
             double usageHours = labBookings.stream()
                     .mapToDouble(b -> {
-                        String start = b.getStartTime();
-                        String end = b.getEndTime();
-                        int startMin = Integer.parseInt(start.substring(0, 2)) * 60 + Integer.parseInt(start.substring(3, 5));
-                        int endMin = Integer.parseInt(end.substring(0, 2)) * 60 + Integer.parseInt(end.substring(3, 5));
+                        int startMin = Integer.parseInt(b.getStartTime().substring(0, 2)) * 60
+                                + Integer.parseInt(b.getStartTime().substring(3, 5));
+                        int endMin = Integer.parseInt(b.getEndTime().substring(0, 2)) * 60
+                                + Integer.parseInt(b.getEndTime().substring(3, 5));
                         return (endMin - startMin) / 60.0;
-                    })
-                    .sum();
-
+                    }).sum();
             stats.add(LabUsageStatVO.builder()
-                    .labId(labId)
-                    .labName(labIdToName.getOrDefault(labId, ""))
-                    .bookingCount(bookingCount)
+                    .labId(entry.getKey())
+                    .labName(labIdToName.getOrDefault(entry.getKey(), ""))
+                    .bookingCount((long) labBookings.size())
                     .usageHours(usageHours)
                     .utilizationRate(0.0)
                     .build());
         }
-
         return stats;
     }
 
+    @Cacheable(value = "equipmentUsage", key = "#userId + ':' + #role + ':' + #dateFrom + ':' + #dateTo")
     public List<EquipmentUsageStatVO> getEquipmentUsage(Long userId, String role, String dateFrom, String dateTo) {
         boolean isStudent = "STUDENT".equals(role);
         LocalDate from = dateFrom != null ? LocalDate.parse(dateFrom) : LocalDate.now().minusDays(30);
         LocalDate to = dateTo != null ? LocalDate.parse(dateTo) : LocalDate.now();
 
-        LambdaQueryWrapper<Borrow> wrapper = new LambdaQueryWrapper<Borrow>()
-                .ge(Borrow::getBorrowDate, from)
-                .le(Borrow::getBorrowDate, to);
+        // For student: use paginated approach (tiny data)
         if (isStudent) {
-            wrapper.eq(Borrow::getUserId, userId);
+            LambdaQueryWrapper<Borrow> wrapper = new LambdaQueryWrapper<Borrow>()
+                    .eq(Borrow::getUserId, userId)
+                    .ge(Borrow::getBorrowDate, from)
+                    .le(Borrow::getBorrowDate, to);
+            List<Borrow> borrows = borrowMapper.selectList(wrapper);
+            return buildEquipmentUsageStats(borrows);
         }
 
-        List<Borrow> borrows = borrowMapper.selectList(wrapper);
-        Map<Long, List<Borrow>> byEquipment = borrows.stream()
-                .collect(Collectors.groupingBy(Borrow::getEquipmentId));
+        // For teacher/admin: use SQL aggregation
+        List<EquipmentUsageAggRow> rows = borrowMapper.aggregateEquipmentUsage(from.toString(), to.toString());
+        if (rows.isEmpty()) return Collections.emptyList();
 
-        List<Equipment> equipments = equipmentMapper.selectList(null);
-        Map<Long, String> equipIdToName = equipments.stream()
+        Set<Long> equipIds = rows.stream().map(EquipmentUsageAggRow::getEquipmentId).collect(Collectors.toSet());
+        Map<Long, String> idToName = equipmentMapper.selectBatchIds(equipIds).stream()
+                .collect(Collectors.toMap(Equipment::getId, Equipment::getName));
+
+        return rows.stream().map(r -> EquipmentUsageStatVO.builder()
+                .equipmentId(r.getEquipmentId())
+                .equipmentName(idToName.getOrDefault(r.getEquipmentId(), ""))
+                .borrowCount(r.getBorrowCount() != null ? r.getBorrowCount() : 0L)
+                .avgBorrowDays(r.getAvgBorrowDays() != null ? r.getAvgBorrowDays() : 0.0)
+                .build()).collect(Collectors.toList());
+    }
+
+    private List<EquipmentUsageStatVO> buildEquipmentUsageStats(List<Borrow> borrows) {
+        Map<Long, List<Borrow>> byEquip = borrows.stream()
+                .collect(Collectors.groupingBy(Borrow::getEquipmentId));
+        Set<Long> equipIds = byEquip.keySet();
+        Map<Long, String> idToName = equipIds.isEmpty() ? Collections.emptyMap()
+                : equipmentMapper.selectBatchIds(equipIds).stream()
                 .collect(Collectors.toMap(Equipment::getId, Equipment::getName));
 
         List<EquipmentUsageStatVO> stats = new ArrayList<>();
-        for (Map.Entry<Long, List<Borrow>> entry : byEquipment.entrySet()) {
-            Long equipmentId = entry.getKey();
+        for (Map.Entry<Long, List<Borrow>> entry : byEquip.entrySet()) {
             List<Borrow> equipBorrows = entry.getValue();
-            long borrowCount = equipBorrows.size();
-            double avgBorrowDays = equipBorrows.stream()
+            double avgDays = equipBorrows.stream()
                     .filter(b -> b.getActualReturn() != null)
-                    .mapToLong(b -> ChronoUnit.DAYS.between(b.getBorrowDate(), b.getActualReturn()))
-                    .average()
-                    .orElse(0.0);
-
+                    .mapToLong(b -> java.time.temporal.ChronoUnit.DAYS.between(b.getBorrowDate(), b.getActualReturn()))
+                    .average().orElse(0.0);
             stats.add(EquipmentUsageStatVO.builder()
-                    .equipmentId(equipmentId)
-                    .equipmentName(equipIdToName.getOrDefault(equipmentId, ""))
-                    .borrowCount(borrowCount)
-                    .avgBorrowDays(avgBorrowDays)
+                    .equipmentId(entry.getKey())
+                    .equipmentName(idToName.getOrDefault(entry.getKey(), ""))
+                    .borrowCount((long) equipBorrows.size())
+                    .avgBorrowDays(avgDays)
                     .build());
         }
-
         return stats;
     }
 
+    @Cacheable(value = "studentRanking", key = "#dateFrom + ':' + #dateTo + ':' + #limit")
     public List<StudentRankingVO> getStudentRanking(String dateFrom, String dateTo, int limit) {
         LocalDate from = dateFrom != null ? LocalDate.parse(dateFrom) : LocalDate.now().minusDays(30);
         LocalDate to = dateTo != null ? LocalDate.parse(dateTo) : LocalDate.now();
 
-        List<Booking> bookings = bookingMapper.selectList(
-                new LambdaQueryWrapper<Booking>()
-                        .eq(Booking::getStatus, BookingStatus.COMPLETED)
-                        .ge(Booking::getDate, from)
-                        .le(Booking::getDate, to));
+        List<UserRankingAggRow> rows = bookingMapper.aggregateUserRanking(from.toString(), to.toString(), limit);
+        if (rows.isEmpty()) return Collections.emptyList();
 
-        Map<Long, List<Booking>> byUser = bookings.stream()
-                .collect(Collectors.groupingBy(Booking::getUserId));
-
-        List<User> users = userMapper.selectBatchIds(byUser.keySet());
-        Map<Long, String> userIdToName = users.stream()
+        Set<Long> userIds = rows.stream().map(UserRankingAggRow::getUserId).collect(Collectors.toSet());
+        Map<Long, String> idToName = userMapper.selectBatchIds(userIds).stream()
                 .collect(Collectors.toMap(User::getId, User::getRealName));
 
-        return byUser.entrySet().stream()
-                .map(entry -> {
-                    List<Booking> userBookings = entry.getValue();
-                    double totalHours = userBookings.stream()
-                            .mapToDouble(b -> {
-                                String start = b.getStartTime();
-                                String end = b.getEndTime();
-                                int startMin = Integer.parseInt(start.substring(0, 2)) * 60 + Integer.parseInt(start.substring(3, 5));
-                                int endMin = Integer.parseInt(end.substring(0, 2)) * 60 + Integer.parseInt(end.substring(3, 5));
-                                return (endMin - startMin) / 60.0;
-                            })
-                            .sum();
-
-                    return StudentRankingVO.builder()
-                            .userId(entry.getKey())
-                            .userRealName(userIdToName.getOrDefault(entry.getKey(), ""))
-                            .bookingCount(userBookings.size())
-                            .totalHours(totalHours)
-                            .build();
-                })
-                .sorted(Comparator.comparingLong(StudentRankingVO::getBookingCount).reversed())
-                .limit(limit)
-                .collect(Collectors.toList());
+        return rows.stream().map(r -> StudentRankingVO.builder()
+                .userId(r.getUserId())
+                .userRealName(idToName.getOrDefault(r.getUserId(), ""))
+                .bookingCount(r.getBookingCount() != null ? r.getBookingCount() : 0L)
+                .totalHours(r.getTotalHours() != null ? r.getTotalHours() : 0.0)
+                .build()).collect(Collectors.toList());
     }
 }

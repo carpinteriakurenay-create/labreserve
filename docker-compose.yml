@@ -6,12 +6,12 @@ services:
     container_name: labreserve-mysql
     restart: unless-stopped
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
       MYSQL_DATABASE: labreserve_dev
       MYSQL_USER: labreserve
-      MYSQL_PASSWORD: labreserve123
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-labreserve123}
     volumes:
       - mysql_data:/var/lib/mysql
       - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -26,11 +26,12 @@ services:
     container_name: labreserve-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis-dev}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis-dev}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
